@@ -1,0 +1,45 @@
+# NeurWorm Snake — Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Numpy / training artifacts
+training/best_params.npy
+*.npy
+*.npz
+
+# Connectome data (downloaded separately)
+connectome/data/*.csv
+
+# Matplotlib cache
+.matplotlib/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/

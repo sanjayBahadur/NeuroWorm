@@ -130,12 +130,15 @@ class CElegansLIF:
             -(self.V - V_REST)
             + R_M * I_total
         )
-        # Neurons in refractory period cannot integrate input
-        dV[self.refractory_timer > 0] = 0.0
+        # Neurons in refractory period cannot integrate input and stay clamped at reset
+        in_refractory = self.refractory_timer > 0.0
+        dV[in_refractory] = 0.0
         self.V += dV
+        self.V[in_refractory] = V_RESET
 
         # ── 5. Spike detection ──────────────────────────────────────────
-        self.spikes = self.V >= V_THRESH
+        # Only neurons NOT currently in refractory period can fire
+        self.spikes = (self.V >= V_THRESH) & (~in_refractory)
 
         # ── 6. Spike reset ──────────────────────────────────────────────
         self.V[self.spikes] = V_RESET

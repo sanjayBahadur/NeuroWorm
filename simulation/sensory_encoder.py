@@ -54,6 +54,7 @@ class SensoryEncoder:
         food_pos:   tuple[int, int],
         snake_body: list[tuple[int, int]],
         direction:  str,
+        *extra,
     ) -> None:
         """
         Compute and inject sensory currents for one game frame.
@@ -64,6 +65,9 @@ class SensoryEncoder:
             snake_body:  Full list of (x, y) body segment positions.
             direction:   Current heading: 'UP', 'DOWN', 'LEFT', or 'RIGHT'.
         """
+        if extra:
+            # Handle callers passing (*obs, direction) where obs has 4 elements
+            direction = extra[0]
         self.net.clear_external()
 
         hx, hy = snake_head

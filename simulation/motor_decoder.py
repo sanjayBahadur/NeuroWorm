@@ -68,27 +68,28 @@ class MotorDecoder:
         cur_idx = DIRECTION_MAP[current_direction]
 
         # ── 1. Reversal check ─────────────────────────────────────────
-        fwd_rev_total = fwd_r + rev_r + 1e-9
-        if rev_r / fwd_rev_total > self.rev_thresh:
+        fwd_rev_total = fwd_r + rev_r
+        if fwd_rev_total > 1e-4 and (rev_r / fwd_rev_total) > self.rev_thresh:
             # Worm wants to reverse — map to 90° turn instead
             turn = -1 if hl_r > hr_r else 1  # left or right
             return DIRECTION_LIST[(cur_idx + turn) % 4]
 
         # ── 2. Dorsal / ventral ───────────────────────────────────────
-        dv_total = db_r + vb_r + 1e-9
-        d_ratio  = db_r / dv_total
-
-        if d_ratio > self.dors_thresh:
-            return "UP"
-        if (1.0 - d_ratio) > self.dors_thresh:
-            return "DOWN"
+        dv_total = db_r + vb_r
+        if dv_total > 1e-4:
+            d_ratio = db_r / dv_total
+            if d_ratio > self.dors_thresh:
+                return "UP"
+            if (1.0 - d_ratio) > self.dors_thresh:
+                return "DOWN"
 
         # ── 3. Head L / R ─────────────────────────────────────────────
-        lr_total = hl_r + hr_r + 1e-9
-        if hl_r / lr_total > 0.6:
-            return "LEFT"
-        if hr_r / lr_total > 0.6:
-            return "RIGHT"
+        lr_total = hl_r + hr_r
+        if lr_total > 1e-4:
+            if hl_r / lr_total > 0.6:
+                return "LEFT"
+            if hr_r / lr_total > 0.6:
+                return "RIGHT"
 
         # ── 4. No strong signal — hold course ─────────────────────────
         return current_direction

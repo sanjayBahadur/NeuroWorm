@@ -20,12 +20,12 @@ htmlcov/
 .tox/
 
 # Numpy / training artifacts
-training/best_params.npy
 *.npy
 *.npz
+!training/best_params.npy
 
-# Connectome data (downloaded separately)
-connectome/data/*.csv
+# Connectome data bundled
+!connectome/data/*.csv
 
 # Matplotlib cache
 .matplotlib/

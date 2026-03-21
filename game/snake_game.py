@@ -13,17 +13,11 @@ from connectome.loader import build_network
 from simulation.sensory_encoder import SensoryEncoder
 from simulation.motor_decoder import MotorDecoder
 from training.optimize_encoding import DEFAULT_PARAMS, STEPS_PER_FRAME
+from game.renderer import Renderer
 
 # Color palette — soil/worm theme
 C_BG        = (26,  15,  10)   # dark soil background
-C_GRID      = (40,  25,  15)   # subtle grid lines
-C_SNAKE_H   = (80, 200,  60)   # bright green head
-C_SNAKE_B   = (50, 140,  40)   # darker body
-C_FOOD      = (220,  80,  30)  # earthy orange food
-C_TEXT      = (200, 184, 126)  # parchment text
-C_DEAD      = (160,  40,  40)  # red tint on death
-
-CELL = 24   # pixels per grid cell
+CELL        = 32               # 32x32 pixels per grid cell (matching sprites)
 
 
 class SnakeGame:
@@ -81,6 +75,7 @@ class SnakeGame:
         if self.show_neural and self.net is not None:
             self.dashboard = NeuralDashboard(self.net)
 
+        self.renderer = Renderer(cell_size=CELL, grid_size=self.grid_size)
         return pygame
 
     def _draw_grid(self, surface, pygame):
@@ -148,10 +143,8 @@ class SnakeGame:
 
             # ── Render ────────────────────────────────────────────────
             self.screen.fill(C_BG)
-            self._draw_grid(self.screen, pg)
-            self._draw_food(self.screen, pg, food)
-            self._draw_snake(self.screen, pg, body, dead=done)
-            self._draw_hud(self.screen, pg, self.env.score, episode)
+            game_surf = self.renderer.render(obs, self.env.score, done)
+            self.screen.blit(game_surf, (0, 0))
 
             # Neural dashboard
             if self.dashboard is not None:
@@ -160,7 +153,8 @@ class SnakeGame:
                 dash_surf = pg.surfarray.make_surface(
                     rgb.transpose(1, 0, 2)
                 )
-                self.screen.blit(dash_surf, (self.game_w, 0))
+                dash_y = (self.game_h - dash_surf.get_height()) // 2
+                self.screen.blit(dash_surf, (self.game_w, max(0, dash_y)))
 
             pg.display.flip()
             self.clock.tick(self.fps)

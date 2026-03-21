@@ -51,6 +51,8 @@ class Renderer:
     """
 
     def __init__(self, cell_size: int = 32, grid_size: int = 20):
+        if not pygame.font.get_init():
+            pygame.font.init()
         self.cell_size = cell_size
         self.grid_size = grid_size
         self.W = cell_size * grid_size

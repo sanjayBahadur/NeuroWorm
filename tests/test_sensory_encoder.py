@@ -27,8 +27,8 @@ def test_clear_before_encode(net_and_encoder):
 
 def test_food_right_activates_food_right_neurons(net_and_encoder):
     net, encoder = net_and_encoder
-    # Food is to the right of the head
-    encoder.encode((5, 10), (15, 10), [(5, 10)], "RIGHT")
+    # Heading UP from (5, 10), food at (15, 10) is to the relative right
+    encoder.encode((5, 10), (15, 10), [(5, 10)], "UP")
     idx = net.name_to_idx.get("ASER", -1)
     if idx >= 0:
         assert net.external_I[idx] > 0.0, "ASER should be activated when food is to the right"

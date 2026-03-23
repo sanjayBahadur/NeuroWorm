@@ -1,15 +1,14 @@
 """
-NeurWorm Snake — Main Demo Entry Point
+NeuroWorm Snake — Main Demo Entry Point
 
 Runs the Snake game controlled by the C. elegans connectome simulation.
-Opens two windows:
-  Left:  The Snake game (soil-themed pixel art)
-  Right: Real-time neural firing rate heatmap
+Features:
+  Left:  Soil-themed pixel-art game with articulated worm and pulsing egg
+  Right: Interactive Dashboard with live neural heatmap and GA evolution controls
 
 Usage:
-    python demo.py              # worm brain controls the snake
-    python demo.py --human      # human keyboard control
-    python demo.py --params training/best_params.npy  # use trained params
+    python demo.py              # biological connectome brain plays snake
+    python demo.py --human      # human keyboard control (WASD / Arrows)
 """
 
 import argparse
@@ -18,17 +17,21 @@ from pathlib import Path
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NeurWorm Snake Demo")
+    parser = argparse.ArgumentParser(description="NeuroWorm Snake Demo")
     parser.add_argument("--human",  action="store_true",
                         help="Human keyboard control instead of worm brain")
     parser.add_argument("--params", type=str, default=None,
                         help="Path to best_params.npy for worm encoding")
     parser.add_argument("--grid",   type=int, default=20,
                         help="Grid size (default 20)")
-    parser.add_argument("--fps",    type=int, default=10,
-                        help="Game FPS (default 10)")
+    parser.add_argument("--fps",    type=int, default=12,
+                        help="Game FPS (default 12)")
     parser.add_argument("--no-viz", action="store_true",
                         help="Disable neural dashboard (faster)")
+    parser.add_argument("--scale", type=float, default=None,
+                        help="Window scale factor (e.g. 1.5, 1.75, 2.0; auto-detected if not specified)")
+    parser.add_argument("--fullscreen", action="store_true",
+                        help="Launch in true fullscreen mode (toggle with F11 anytime)")
     args = parser.parse_args()
 
     # Load encoding parameters
@@ -36,8 +39,8 @@ def main():
         theta = np.load(args.params)
         print(f"Loaded params from {args.params}: {theta.round(3)}")
     else:
-        from training.optimize_encoding import DEFAULT_PARAMS
-        theta = DEFAULT_PARAMS
+        from training.genetic_algorithm import DEFAULT_GENOME
+        theta = DEFAULT_GENOME
         print("Using default encoding parameters.")
 
     # Import game (pygame) only here to keep imports clean
@@ -48,6 +51,8 @@ def main():
         human_mode  = args.human,
         show_neural = not args.no_viz,
         theta       = theta,
+        scale       = args.scale,
+        fullscreen  = args.fullscreen,
     )
     game.run()
 

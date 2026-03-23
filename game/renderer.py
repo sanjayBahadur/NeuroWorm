@@ -1,14 +1,17 @@
 """
-Pixel art renderer for NeurWorm Snake.
+Pixel art renderer for NeuroWorm Snake.
 
-Loads sprites from assets/ and renders the game board each frame.
-Falls back to colored rectangles if sprite files are not yet available.
+Loads authentic transparent pixel-art sprites and renders:
+  - Soil tilemap with pebble & root variations
+  - Directional worm head with expressive eyes
+  - Smooth articulated body segments with corner turning pieces
+  - Pointed directional tail segments
+  - Bioluminescent pulsing amber food egg
 """
 
-import os
+import math
 from pathlib import Path
 from typing import Optional
-
 import numpy as np
 import pygame
 
@@ -17,22 +20,20 @@ SPRITE_DIR = ASSET_DIR / "sprites"
 TILE_DIR   = ASSET_DIR / "tiles"
 UI_DIR     = ASSET_DIR / "ui"
 
-# Earthy color palette (fallback when sprites not loaded)
-SOIL_DARK    = (61,  43,  31)   # #3d2b1f — soil background
-SOIL_MID     = (89,  62,  43)   # #593e2b — soil mid-tone
-WORM_PINK    = (255, 158, 181)  # #ff9eb5 — worm body
-WORM_DARK    = (200, 100, 130)  # darker worm outline
-FOOD_AMBER   = (255, 221, 136)  # #ffdd88 — food glow
-FOOD_WHITE   = (240, 230, 210)  # food shell
-SCORE_GOLD   = (200, 184, 126)  # #c8b87e — score text
-STONE_GREY   = (80,  72,  65)   # border stones
-TEXT_CREAM   = (220, 210, 180)  # UI text
+SOIL_DARK    = (48,  32,  22)
+SOIL_MID     = (65,  45,  30)
+WORM_PINK    = (255, 175, 195)
+WORM_DARK    = (45,  20,  30)
+FOOD_AMBER   = (255, 190,  60)
+FOOD_WHITE   = (255, 248, 225)
+SCORE_GOLD   = (200, 184, 126)
+STONE_GREY   = (42,  38,  35)
+TEXT_CREAM   = (240, 230, 205)
 
 FONT_NAME    = "monospace"
 
 
 def _try_load(path: Path) -> Optional[pygame.Surface]:
-    """Load a surface if the file exists, else return None."""
     if path.exists():
         try:
             return pygame.image.load(str(path)).convert_alpha()
@@ -42,13 +43,7 @@ def _try_load(path: Path) -> Optional[pygame.Surface]:
 
 
 class Renderer:
-    """
-    Renders the Snake game board with pixel art sprites.
-
-    Supports two rendering modes:
-      - Sprite mode:   Loads PNG assets from assets/ directory
-      - Fallback mode: Renders colored rectangles (dev mode)
-    """
+    """Renders the game board with organic pixel art sprites."""
 
     def __init__(self, cell_size: int = 32, grid_size: int = 20):
         if not pygame.font.get_init():
@@ -59,15 +54,14 @@ class Renderer:
         self.H = cell_size * grid_size
 
         self.surface = pygame.Surface((self.W, self.H))
-        self.font    = pygame.font.SysFont(FONT_NAME, 16, bold=True)
-        self.big_font = pygame.font.SysFont(FONT_NAME, 32, bold=True)
+        self.font = pygame.font.SysFont(FONT_NAME, 14, bold=True)
+        self.big_font = pygame.font.SysFont(FONT_NAME, 28, bold=True)
+        self.frame_count = 0
 
         self._load_sprites()
         self._build_tilemap()
 
-    # ─────────────────────────────────────────────────────────────────────
     def _load_sprites(self) -> None:
-        """Load all PNG assets. Missing files fall back to None."""
         cs = self.cell_size
 
         def load_scaled(path: Path) -> Optional[pygame.Surface]:
@@ -81,7 +75,12 @@ class Renderer:
             "head_left":  load_scaled(SPRITE_DIR / "worm_head_left.png"),
             "head_up":    load_scaled(SPRITE_DIR / "worm_head_up.png"),
             "head_down":  load_scaled(SPRITE_DIR / "worm_head_down.png"),
-            "body":       load_scaled(SPRITE_DIR / "worm_body_straight.png"),
+            "body_h":     load_scaled(SPRITE_DIR / "worm_body_straight.png"),
+            "body_v":     load_scaled(SPRITE_DIR / "worm_body_vertical.png"),
+            "turn_ne":    load_scaled(SPRITE_DIR / "worm_body_turn_ne.png"),
+            "turn_nw":    load_scaled(SPRITE_DIR / "worm_body_turn_nw.png"),
+            "turn_se":    load_scaled(SPRITE_DIR / "worm_body_turn_se.png"),
+            "turn_sw":    load_scaled(SPRITE_DIR / "worm_body_turn_sw.png"),
             "tail_right": load_scaled(SPRITE_DIR / "worm_tail_right.png"),
             "tail_left":  load_scaled(SPRITE_DIR / "worm_tail_left.png"),
             "tail_up":    load_scaled(SPRITE_DIR / "worm_tail_up.png"),
@@ -93,62 +92,27 @@ class Renderer:
         }
 
     def _build_tilemap(self) -> None:
-        """
-        Pre-render the background tilemap with random tile variation.
-        Uses a seeded RNG so the map is consistent across frames.
-        """
         rng = np.random.default_rng(1337)
-        self.tilemap = rng.integers(0, 4, size=(self.grid_size, self.grid_size))
+        self.tilemap = rng.integers(0, 5, size=(self.grid_size, self.grid_size))
 
-    # ─────────────────────────────────────────────────────────────────────
-    def render(
-        self,
-        obs:       tuple,
-        score:     int,
-        game_over: bool,
-    ) -> pygame.Surface:
-        """
-        Render one complete game frame.
-
-        Args:
-            obs:       (head_pos, food_pos, body, direction) from SnakeEnv.
-            score:     Current score.
-            game_over: Whether the game is over.
-
-        Returns:
-            Rendered pygame.Surface (W × H).
-        """
+    def render(self, obs: tuple, score: int, game_over: bool, gen_info: str = "") -> pygame.Surface:
+        self.frame_count += 1
         head, food, body, direction = obs
         self.surface.fill(SOIL_DARK)
 
-        # Draw background tiles
         self._draw_background()
-
-        # Draw food
         self._draw_food(food)
-
-        # Draw snake body (tail → head order for correct layering)
         self._draw_snake(body, direction)
-
-        # Draw score HUD
-        self._draw_hud(score, game_over)
+        self._draw_hud(score, game_over, gen_info)
 
         return self.surface
 
-    # ─────────────────────────────────────────────────────────────────────
     def _draw_background(self) -> None:
         cs = self.cell_size
         for gy in range(self.grid_size):
             for gx in range(self.grid_size):
-                rect  = pygame.Rect(gx * cs, gy * cs, cs, cs)
-                tile_type = self.tilemap[gy, gx]
-
-                # Border tiles
-                is_border = (
-                    gx == 0 or gy == 0
-                    or gx == self.grid_size - 1
-                    or gy == self.grid_size - 1
-                )
+                rect = pygame.Rect(gx * cs, gy * cs, cs, cs)
+                is_border = (gx == 0 or gy == 0 or gx == self.grid_size - 1 or gy == self.grid_size - 1)
 
                 if is_border:
                     surf = self.sprites.get("border")
@@ -157,83 +121,121 @@ class Renderer:
                     else:
                         pygame.draw.rect(self.surface, STONE_GREY, rect)
                 else:
-                    key  = "soil" if tile_type < 3 else "soil_a"
+                    tt = self.tilemap[gy, gx]
+                    key = "soil_a" if tt == 3 else "soil"
                     surf = self.sprites.get(key)
                     if surf:
                         self.surface.blit(surf, rect)
                     else:
                         pygame.draw.rect(self.surface, SOIL_DARK, rect)
 
-                    # Subtle grid lines in fallback mode
-                    if not surf:
-                        pygame.draw.rect(
-                            self.surface, SOIL_MID, rect, 1
-                        )
-
     def _draw_food(self, food: tuple) -> None:
         fx, fy = food
-        rect   = pygame.Rect(fx * self.cell_size, fy * self.cell_size,
-                             self.cell_size, self.cell_size)
-        surf   = self.sprites.get("food")
+        cs = self.cell_size
+        rect = pygame.Rect(fx * cs, fy * cs, cs, cs)
+
+        # Subtle bioluminescent pulse
+        pulse = 1.0 + 0.15 * math.sin(self.frame_count * 0.2)
+        cx = fx * cs + cs // 2
+        cy = fy * cs + cs // 2
+        halo_radius = int((cs // 2 + 2) * pulse)
+        halo_surf = pygame.Surface((halo_radius * 2, halo_radius * 2), pygame.SRCALPHA)
+        pygame.draw.circle(halo_surf, (255, 200, 80, 50), (halo_radius, halo_radius), halo_radius)
+        self.surface.blit(halo_surf, (cx - halo_radius, cy - halo_radius))
+
+        surf = self.sprites.get("food")
         if surf:
             self.surface.blit(surf, rect)
         else:
-            # Fallback: glowing amber dot
-            cx = fx * self.cell_size + self.cell_size // 2
-            cy = fy * self.cell_size + self.cell_size // 2
-            r  = self.cell_size // 2 - 4
-            pygame.draw.circle(self.surface, FOOD_AMBER, (cx, cy), r)
-            pygame.draw.circle(self.surface, FOOD_WHITE, (cx, cy), r - 4)
+            pygame.draw.circle(self.surface, FOOD_AMBER, (cx, cy), cs // 2 - 3)
+            pygame.draw.circle(self.surface, FOOD_WHITE, (cx, cy), cs // 2 - 6)
 
     def _draw_snake(self, body: list, direction: str) -> None:
         cs = self.cell_size
+        n = len(body)
+        if n == 0:
+            return
+
         for i, (bx, by) in enumerate(body):
             rect = pygame.Rect(bx * cs, by * cs, cs, cs)
+
             if i == 0:
-                # Head
-                key  = f"head_{direction.lower()}"
+                # ── Head ──────────────────────────────────────────────
+                key = f"head_{direction.lower()}"
                 surf = self.sprites.get(key)
                 if surf:
                     self.surface.blit(surf, rect)
                 else:
-                    pygame.draw.rect(self.surface, WORM_PINK, rect)
-                    pygame.draw.rect(self.surface, WORM_DARK, rect, 2)
-            elif i == len(body) - 1:
-                # Tail — infer direction from previous segment
-                if len(body) > 1:
-                    px, py = body[-2]
-                    tdx, tdy = bx - px, by - py
-                    tail_dir = {
-                        (1, 0): "right", (-1, 0): "left",
-                        (0, 1): "down",  (0, -1): "up"
-                    }.get((tdx, tdy), "right")
-                    key  = f"tail_{tail_dir}"
-                    surf = self.sprites.get(key)
-                    if surf:
-                        self.surface.blit(surf, rect)
-                        continue
-                pygame.draw.rect(self.surface, WORM_PINK, rect.inflate(-6, -6))
-            else:
-                # Body segment
-                surf = self.sprites.get("body")
+                    pygame.draw.rect(self.surface, WORM_PINK, rect, border_radius=6)
+            elif i == n - 1:
+                # ── Tail ──────────────────────────────────────────────
+                prev_x, prev_y = body[i - 1]
+                tdx = bx - prev_x
+                tdy = by - prev_y
+                tail_dir = "right"
+                if tdx > 0:
+                    tail_dir = "right"
+                elif tdx < 0:
+                    tail_dir = "left"
+                elif tdy > 0:
+                    tail_dir = "down"
+                elif tdy < 0:
+                    tail_dir = "up"
+
+                key = f"tail_{tail_dir}"
+                surf = self.sprites.get(key)
                 if surf:
                     self.surface.blit(surf, rect)
                 else:
-                    inner = rect.inflate(-4, -4)
-                    pygame.draw.rect(self.surface, WORM_PINK, inner)
-                    pygame.draw.rect(self.surface, WORM_DARK, rect, 2)
+                    pygame.draw.rect(self.surface, WORM_PINK, rect.inflate(-6, -6), border_radius=4)
+            else:
+                # ── Articulated Body Segment ──────────────────────────
+                prev_x, prev_y = body[i - 1]
+                next_x, next_y = body[i + 1]
 
-    def _draw_hud(self, score: int, game_over: bool) -> None:
-        # Score
-        score_surf = self.font.render(
-            f"SCORE: {score}", True, SCORE_GOLD
-        )
-        self.surface.blit(score_surf, (8, 8))
+                v1 = (prev_x - bx, prev_y - by)
+                v2 = (next_x - bx, next_y - by)
+
+                if v1[0] == 0 and v2[0] == 0:
+                    # Vertical segment
+                    surf = self.sprites.get("body_v") or self.sprites.get("body_h")
+                elif v1[1] == 0 and v2[1] == 0:
+                    # Horizontal segment
+                    surf = self.sprites.get("body_h")
+                else:
+                    # Corner bend
+                    dirs = {v1, v2}
+                    if (0, -1) in dirs and (1, 0) in dirs:
+                        surf = self.sprites.get("turn_ne")
+                    elif (0, -1) in dirs and (-1, 0) in dirs:
+                        surf = self.sprites.get("turn_nw")
+                    elif (0, 1) in dirs and (1, 0) in dirs:
+                        surf = self.sprites.get("turn_se")
+                    elif (0, 1) in dirs and (-1, 0) in dirs:
+                        surf = self.sprites.get("turn_sw")
+                    else:
+                        surf = self.sprites.get("body_h")
+
+                if surf:
+                    self.surface.blit(surf, rect)
+                else:
+                    pygame.draw.rect(self.surface, WORM_PINK, rect.inflate(-4, -4), border_radius=4)
+
+    def _draw_hud(self, score: int, game_over: bool, gen_info: str) -> None:
+        hud_bg = pygame.Surface((self.W, 26), pygame.SRCALPHA)
+        hud_bg.fill((20, 12, 8, 180))
+        self.surface.blit(hud_bg, (0, 0))
+
+        score_txt = self.font.render(f"EGG SCORE: {score}", True, SCORE_GOLD)
+        self.surface.blit(score_txt, (10, 5))
+
+        if gen_info:
+            info_txt = self.font.render(gen_info, True, TEXT_CREAM)
+            self.surface.blit(info_txt, (self.W - info_txt.get_width() - 10, 5))
 
         if game_over:
-            over_surf  = self.big_font.render("GAME OVER", True, SCORE_GOLD)
-            restart    = self.font.render("Press R to restart", True, TEXT_CREAM)
-            cx = self.W // 2 - over_surf.get_width()  // 2
-            cy = self.H // 2 - over_surf.get_height() // 2
-            self.surface.blit(over_surf, (cx, cy))
-            self.surface.blit(restart, (cx + 20, cy + 40))
+            over_bg = pygame.Surface((self.W, 60), pygame.SRCALPHA)
+            over_bg.fill((30, 15, 10, 220))
+            self.surface.blit(over_bg, (0, self.H // 2 - 30))
+            over_txt = self.big_font.render("SIMULATION RESET", True, SCORE_GOLD)
+            self.surface.blit(over_txt, (self.W // 2 - over_txt.get_width() // 2, self.H // 2 - 20))

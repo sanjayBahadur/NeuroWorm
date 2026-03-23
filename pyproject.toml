@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "neurworm-snake"
+name = "neuroworm-snake"
 version = "1.0.0"
 description = "C. elegans connectome plays Snake — a bio-inspired AI game"
 readme = "README.md"

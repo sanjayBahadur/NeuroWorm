@@ -1,6 +1,6 @@
-# 🪱 NeurWorm Snake
+# 🪱 NeuroWorm Snake
 
-> **C. elegans connectome plays Snake** — a bio-inspired AI game powered by a real 302-neuron worm nervous system simulation.
+> **C. elegans connectome plays Snake** — a bio-inspired AI game powered by a real 302-neuron biological worm nervous system simulation with interactive Genetic Algorithm evolution.
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -9,9 +9,9 @@
 
 ## What Is This?
 
-NeurWorm Snake simulates the **complete nervous system of *C. elegans*** — a 302-neuron nematode worm — and uses it to play the classic Snake game. The worm's sensory neurons detect food and danger; its motor neurons steer the snake.
+**NeuroWorm Snake** simulates the **complete nervous system of *C. elegans*** — a 302-neuron nematode worm — and uses it to play the classic Snake game. The worm's sensory neurons detect food and obstacles, signals propagate through 3,709 chemical synapses and 1,105 gap junctions, and motor neurons steer the worm.
 
-No backprop. No gradient descent. Just a biophysically-grounded **Leaky Integrate-and-Fire** network and an **Evolution Strategy** that tunes how game state maps to neuron currents.
+No black-box backpropagation. You can watch the worm evolve in real time, or click **[Fast Forward (100x)]** to run 100 off-screen generational iterations per second and watch the worm become dramatically smarter!
 
 ---
 

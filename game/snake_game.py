@@ -30,6 +30,7 @@ from connectome.loader import build_network
 from simulation.sensory_encoder import SensoryEncoder
 from simulation.motor_decoder import MotorDecoder
 from training.genetic_algorithm import GeneticOptimizer, DEFAULT_GENOME
+from viz.sensory_radar import SensoryRadar
 
 try:
     from viz.neural_dashboard import NeuralDashboard
@@ -99,9 +100,10 @@ class SnakeGame:
         self.fullscreen = fullscreen
         self.paused = False
         self.fast_forwarding = False
+        self.view_mode = "radar"  # "radar" or "heatmap"
 
         self.env = SnakeEnv(grid_size=grid_size)
-        self.ga = GeneticOptimizer(pop_size=16, grid_size=grid_size)
+        self.ga = GeneticOptimizer(pop_size=10, grid_size=grid_size)
 
         # Active worm brain
         self.net = build_network()
@@ -111,6 +113,7 @@ class SnakeGame:
         # Apply initial best genome
         self._apply_genome(self.ga.best_individual.genome)
 
+        self.radar = None
         self.dashboard = None
         self.buttons = []
         self._init_ui_buttons()
@@ -179,6 +182,7 @@ class SnakeGame:
 
         self.renderer = Renderer(cell_size=CELL_SIZE, grid_size=self.grid_size)
 
+        self.radar = SensoryRadar(grid_size=self.grid_size)
         if self.show_neural and self.net is not None:
             self.dashboard = NeuralDashboard(self.net)
 
@@ -264,6 +268,8 @@ class SnakeGame:
                         else:
                             self.screen = pg.display.set_mode((self.win_w, self.win_h), flags)
                         self.win_w, self.win_h = self.screen.get_size()
+                    elif event.key == pg.K_TAB:
+                        self.view_mode = "heatmap" if self.view_mode == "radar" else "radar"
                     elif event.key == pg.K_SPACE:
                         self.paused = not self.paused
                     elif event.key == pg.K_f:
@@ -278,7 +284,7 @@ class SnakeGame:
                     elif event.key in (pg.K_MINUS, pg.K_UNDERSCORE):
                         self.fps = max(4, self.fps - 4)
                     elif event.key == pg.K_r:
-                        self.ga = GeneticOptimizer(pop_size=16, grid_size=self.grid_size)
+                        self.ga = GeneticOptimizer(pop_size=10, grid_size=self.grid_size)
                         self._apply_genome(self.ga.best_individual.genome)
                         self._reset_episode()
                     elif self.human_mode:
@@ -306,7 +312,7 @@ class SnakeGame:
                     elif self.btn_spddn.is_clicked(virtual_mouse_pos):
                         self.fps = max(4, self.fps - 4)
                     elif self.btn_reset.is_clicked(virtual_mouse_pos):
-                        self.ga = GeneticOptimizer(pop_size=16, grid_size=self.grid_size)
+                        self.ga = GeneticOptimizer(pop_size=10, grid_size=self.grid_size)
                         self._apply_genome(self.ga.best_individual.genome)
                         self._reset_episode()
 
@@ -368,40 +374,45 @@ class SnakeGame:
         subtitle = self.font_body.render("C. elegans Connectome (302 Neurons)", True, C_MUTED)
         self.virtual_screen.blit(subtitle, (x0, 26))
 
-        # Neural Heatmap Display
-        if self.dashboard:
+        # Sensory Radar or Neural Heatmap Display
+        if self.view_mode == "radar" and self.radar is not None:
+            radar_surf = self.radar.render(self.obs, self.encoder.telemetry, self.direction)
+            self.virtual_screen.blit(radar_surf, (x0, 44))
+        elif self.dashboard:
             rgb = self.dashboard.get_rgb_array()
             dash_surf = pg.surfarray.make_surface(rgb.transpose(1, 0, 2))
-            scaled_dash = pg.transform.scale(dash_surf, (PANEL_W - 28, 200))
-            self.virtual_screen.blit(scaled_dash, (x0, 48))
-            pg.draw.rect(self.virtual_screen, C_BORDER, (x0, 48, PANEL_W - 28, 200), 1)
+            scaled_dash = pg.transform.scale(dash_surf, (PANEL_W - 28, 220))
+            self.virtual_screen.blit(scaled_dash, (x0, 44))
+            pg.draw.rect(self.virtual_screen, C_BORDER, (x0, 44, PANEL_W - 28, 220), 1)
 
         # Telemetry Box
-        t_box = pg.Rect(x0, 260, PANEL_W - 28, 165)
+        t_box = pg.Rect(x0, 268, PANEL_W - 28, 162)
         pg.draw.rect(self.virtual_screen, (28, 18, 12), t_box, border_radius=4)
         pg.draw.rect(self.virtual_screen, C_BORDER, t_box, 1, border_radius=4)
 
+        champs = sorted(self.ga.population, key=lambda ind: ind.fitness, reverse=True)[:3]
         lines = [
             ("🧬 Generation:", f"#{self.ga.generation}"),
-            ("🏆 Best Score:", f"{self.ga.best_individual.score} eggs"),
-            ("⚡ Best Fitness:", f"{self.ga.best_individual.fitness:.1f}"),
+            ("🥇 Champ 1:", f"{champs[0].score} eggs ({champs[0].fitness:.0f} fit)"),
+            ("🥈 Champ 2:", f"{champs[1].score} eggs ({champs[1].fitness:.0f} fit)"),
+            ("🥉 Champ 3:", f"{champs[2].score} eggs ({champs[2].fitness:.0f} fit)"),
+            ("⚡ Population:", f"{self.ga.pop_size} (Keep 3)"),
             ("⏱️ Speed:", f"{self.fps} FPS"),
             ("🎮 Mode:", "PAUSED" if self.paused else "AUTONOMOUS"),
-            ("🔄 Total Evals:", f"{self.ga.total_evaluations}"),
         ]
 
-        ty = 270
+        ty = 274
         for label, val in lines:
             ltxt = self.font_body.render(label, True, C_TEXT)
-            vtxt = self.font_body.render(val, True, C_ACCENT if "Best" in label or "Gen" in label else C_HEADER)
-            self.virtual_screen.blit(ltxt, (x0 + 10, ty))
-            self.virtual_screen.blit(vtxt, (x0 + t_box.width - vtxt.get_width() - 10, ty))
-            ty += 23
+            vtxt = self.font_body.render(val, True, C_ACCENT if "Champ" in label or "Gen" in label else C_HEADER)
+            self.virtual_screen.blit(ltxt, (x0 + 8, ty))
+            self.virtual_screen.blit(vtxt, (x0 + t_box.width - vtxt.get_width() - 8, ty))
+            ty += 21
 
         # Interactive Buttons
         for btn in self.buttons:
             btn.draw(self.virtual_screen, self.font_btn, is_hovered=btn.rect.collidepoint(mouse_pos))
 
         # Footer hint
-        hint = self.font_body.render("F11: Fullscreen | F: 100x Fast | Space: Pause", True, C_MUTED)
+        hint = self.font_body.render("TAB: Map/Heatmap | F: 100x | Space: Pause", True, C_MUTED)
         self.virtual_screen.blit(hint, (x0, 595))

@@ -111,6 +111,9 @@ class SnakeGame:
         self.decoder = MotorDecoder(self.net)
 
         # Apply initial best genome
+        if theta is not None and len(theta) == len(DEFAULT_GENOME):
+            self.ga.best_individual.genome = np.array(theta, dtype=np.float32)
+            self.ga.population[0].genome = np.array(theta, dtype=np.float32)
         self._apply_genome(self.ga.best_individual.genome)
 
         self.radar = None

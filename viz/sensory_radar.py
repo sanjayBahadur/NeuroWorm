@@ -48,7 +48,14 @@ class SensoryRadar:
         self.font_bold = pg.font.SysFont("monospace", 10, bold=True)
         self.cell_px = GRID_BOX_SIZE / grid_size
 
-    def render(self, obs: tuple, telemetry: dict, direction: str) -> pg.Surface:
+    def render(
+        self,
+        obs: tuple,
+        telemetry: dict,
+        direction: str,
+        other_worms: list = None,
+        worm_color: tuple = None,
+    ) -> pg.Surface:
         self.surface.fill(C_BG)
         pg.draw.rect(self.surface, C_BORDER, (0, 0, RADAR_W, RADAR_H), 1)
 
@@ -85,16 +92,40 @@ class SensoryRadar:
         # Food pellet
         pg.draw.circle(self.surface, C_FOOD, (food_cx, food_cy), max(2, int(c_px / 2)))
 
-        # ── Worm Body Segments ────────────────────────────────────────
+        # ── Other Worms (Mini-Grid) ───────────────────────────────────
+        if other_worms:
+            for ow in other_worms:
+                if ow.alive and ow.obs:
+                    obody = ow.obs[2]
+                    ocol = getattr(ow, "color", (160, 160, 160))
+                    dim_col = (max(20, ocol[0] // 2), max(20, ocol[1] // 2), max(20, ocol[2] // 2))
+                    for obx, oby in obody[1:]:
+                        pg.draw.rect(
+                            self.surface, dim_col,
+                            (map_x + int(obx * c_px + 2), map_y + int(oby * c_px + 2), int(c_px - 3), int(c_px - 3)),
+                            border_radius=1
+                        )
+                    if obody:
+                        ohx, ohy = obody[0]
+                        pg.draw.circle(
+                            self.surface, ocol,
+                            (map_x + int(ohx * c_px + c_px / 2), map_y + int(ohy * c_px + c_px / 2)),
+                            max(2, int(c_px / 3))
+                        )
+
+        # ── Focused Worm Body Segments ────────────────────────────────
+        head_col = worm_color if worm_color else C_WORM_H
+        body_col = (int(head_col[0] * 0.75), int(head_col[1] * 0.75), int(head_col[2] * 0.75))
+
         for i, (bx, by) in enumerate(body[1:]):
             bx_px = map_x + int(bx * c_px + 1)
             by_px = map_y + int(by * c_px + 1)
-            pg.draw.rect(self.surface, C_WORM_B, (bx_px, by_px, int(c_px - 1), int(c_px - 1)), border_radius=2)
+            pg.draw.rect(self.surface, body_col, (bx_px, by_px, int(c_px - 1), int(c_px - 1)), border_radius=2)
 
-        # Worm Head
+        # Focused Worm Head
         head_cx = map_x + int(hx * c_px + c_px / 2)
         head_cy = map_y + int(hy * c_px + c_px / 2)
-        pg.draw.circle(self.surface, C_WORM_H, (head_cx, head_cy), max(3, int(c_px / 2 + 1)))
+        pg.draw.circle(self.surface, head_col, (head_cx, head_cy), max(3, int(c_px / 2 + 1)))
 
         # ── Active Mechanosensory Whiskers (Rays) ─────────────────────
         front_hit = telemetry.get("front_hit", (hx, hy))

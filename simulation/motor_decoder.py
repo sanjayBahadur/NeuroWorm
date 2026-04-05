@@ -77,20 +77,21 @@ class MotorDecoder:
         total_fwd_rev = fwd_r + rev_r
 
         # ── 1. Reversal / Emergency Evasion ───────────────────────────
-        # When AVAL/AVAR is activated (e.g. obstacle detected ahead)
+        # When AVAL/AVAR is activated (e.g. obstacle detected ahead via evolved synapses)
         if total_fwd_rev > 1e-4 and (rev_r / total_fwd_rev) > self.rev_thresh:
-            # Danger ahead: must turn 90 degrees.
-            # Compare left vs right danger & food:
             left_penalty  = dl_r * 2.0 - fl_r
             right_penalty = dr_r * 2.0 - fr_r
 
             if left_penalty > right_penalty:
-                return right_dir
+                next_dir = right_dir
             elif right_penalty > left_penalty:
-                return left_dir
+                next_dir = left_dir
             else:
-                # Use head motor neurons SMDDL vs SMDDR
-                return left_dir if hl_r >= hr_r else right_dir
+                next_dir = left_dir if hl_r >= hr_r else right_dir
+
+            thought = "🚨 Wall Alert! Emergency Avoidance Turn"
+            self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, next_dir, thought)
+            return next_dir
 
         # ── 2. Head Motor Lateral Steering (SMDDL vs SMDDR) ───────────
         total_lr = hl_r + hr_r + fl_r + fr_r
@@ -100,22 +101,40 @@ class MotorDecoder:
 
             ratio = (left_drive + 1e-4) / (abs(left_drive) + abs(right_drive) + 2e-4)
             if ratio > self.turn_thresh:
+                thought = "👃 Food Scent on Left -> Steering Left"
+                self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, left_dir, thought)
                 return left_dir
             if (1.0 - ratio) > self.turn_thresh:
+                thought = "👃 Food Scent on Right -> Steering Right"
+                self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, right_dir, thought)
                 return right_dir
 
         # ── 3. Dorsal vs Ventral Motor Activation ─────────────────────
         total_dv = db_r + vb_r
         if total_dv > 1e-4:
             d_ratio = db_r / total_dv
-            if d_ratio > self.dv_thresh:
-                # Dorsal activation maps to turn UP (if not moving opposite)
-                if current_direction != "DOWN":
-                    return "UP"
-            elif (1.0 - d_ratio) > self.dv_thresh:
-                # Ventral activation maps to turn DOWN
-                if current_direction != "UP":
-                    return "DOWN"
+            if d_ratio > self.dv_thresh and current_direction != "DOWN":
+                thought = "⬆️ Dorsal Wave Active -> Steering UP"
+                self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, "UP", thought)
+                return "UP"
+            elif (1.0 - d_ratio) > self.dv_thresh and current_direction != "UP":
+                thought = "⬇️ Ventral Wave Active -> Steering DOWN"
+                self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, "DOWN", thought)
+                return "DOWN"
 
-        # ── 4. Default: Maintain Course ───────────────────────────────
+        # ── 4. Default: Forward Crawling ──────────────────────────────
+        thought = "🟢 Forward Crawl -> Tracking Bacterial Trail"
+        self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, current_direction, thought)
         return current_direction
+
+    def _record_telemetry(self, fwd_r, rev_r, hl_r, hr_r, action, thought):
+        tot_cmd = max(1e-4, fwd_r + rev_r)
+        tot_head = max(1e-4, hl_r + hr_r)
+        self.telemetry = {
+            "decision_fwd": int(np.clip((fwd_r / tot_cmd) * 100, 0, 100)),
+            "decision_rev": int(np.clip((rev_r / tot_cmd) * 100, 0, 100)),
+            "muscle_steer_l": int(np.clip((hl_r / tot_head) * 100, 0, 100)),
+            "muscle_steer_r": int(np.clip((hr_r / tot_head) * 100, 0, 100)),
+            "action": action,
+            "thought_summary": thought,
+        }

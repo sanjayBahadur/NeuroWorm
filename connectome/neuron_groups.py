@@ -22,12 +22,12 @@ REVERSAL_CMD = ["AVAL", "AVAR"]           # drive backward / reversal
 
 # ─── MOTOR NEURONS ───────────────────────────────────────────────────────────
 # Dorsal body motor neurons (forward circuit)
-DORSAL_MOTOR = ["DB01", "DB02", "DB03", "DB04", "DB05", "DB06", "DB07"]
+DORSAL_MOTOR = ["DB1", "DB2", "DB3", "DB4", "DB5", "DB6", "DB7"]
 
 # Ventral body motor neurons (forward circuit)
 VENTRAL_MOTOR = [
-    "VB01", "VB02", "VB03", "VB04", "VB05",
-    "VB06", "VB07", "VB08", "VB09", "VB10", "VB11",
+    "VB1", "VB2", "VB3", "VB4", "VB5",
+    "VB6", "VB7", "VB8", "VB9", "VB10", "VB11",
 ]
 
 # Head motor neurons — directional

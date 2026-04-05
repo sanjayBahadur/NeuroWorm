@@ -129,34 +129,31 @@ class SensoryEncoder:
         left_dist,  left_hit  = self._cast_ray(snake_head, left_dir,  body_set, max_range=g)
         right_dist, right_hit = self._cast_ray(snake_head, right_dir, body_set, max_range=g)
 
-        # Immediate danger ahead (Nose touch):
-        if front_dist == 1:
-            # Physical collision imminent: extreme nose touch (AVM) + reversal command (AVA)
+        # ── 1. Mechanosensory Whiskers (Touch & Collisions) ───────────
+        # Front obstacle touch -> depolarize anterior mechanoreceptors AVM, ALML, ALMR
+        if front_dist <= 5:
+            front_intensity = 18.0 * (1.0 / front_dist)
             for n in DANGER_FRONT:
-                self.net.inject(n, self.i_danger_front * 1.5)
-            for n in REVERSAL_CMD:
-                self.net.inject(n, self.i_danger_front * 1.2)
-        elif front_dist <= 3:
-            # Approaching obstacle: warning touch gradient
-            warn = self.i_danger_front * (1.0 / front_dist)
-            for n in DANGER_FRONT:
-                self.net.inject(n, warn)
+                self.net.inject(n, front_intensity)
+        else:
+            front_intensity = 0.0
 
-        # Flank obstacles:
-        if left_dist <= 2:
-            l_curr = self.i_danger_side * (1.0 / left_dist)
+        # Flank obstacles -> depolarize lateral nociceptors ASHL and ASHR
+        if left_dist <= 4:
+            left_intensity = 14.0 * (1.0 / left_dist)
             for n in DANGER_LEFT:
-                self.net.inject(n, l_curr)
+                self.net.inject(n, left_intensity)
+        else:
+            left_intensity = 0.0
 
-        if right_dist <= 2:
-            r_curr = self.i_danger_side * (1.0 / right_dist)
+        if right_dist <= 4:
+            right_intensity = 14.0 * (1.0 / right_dist)
             for n in DANGER_RIGHT:
-                self.net.inject(n, r_curr)
+                self.net.inject(n, right_intensity)
+        else:
+            right_intensity = 0.0
 
         # ── 2. Biological Chemical Diffusion Plume (Chemotaxis) ───────
-        # Amphid sensors are located bilaterally on the head tip:
-        # Left amphid position (offset half a cell to the left)
-        # Right amphid position (offset half a cell to the right)
         l_pos = (hx + DX[left_dir] * 0.7,  hy + DY[left_dir] * 0.7)
         r_pos = (hx + DX[right_dir] * 0.7, hy + DY[right_dir] * 0.7)
 
@@ -168,42 +165,43 @@ class SensoryEncoder:
         dc_dt   = c_center - self.last_concentration
         self.last_concentration = c_center
 
-        # Klinotaxis steering:
-        if delta_c > 0.05:
-            # Odor concentration higher on left -> stimulate ASEL
-            scale = min(3.0, delta_c * 0.8)
+        # Chemotaxis:
+        # ASEL depolarized by left odor gradient
+        # ASER depolarized by right odor gradient
+        if delta_c > 0.02:
+            l_chem_scale = min(15.0, delta_c * 1.6)
             for n in FOOD_LEFT:
-                self.net.inject(n, self.i_food * scale)
-        elif delta_c < -0.05:
-            # Odor concentration higher on right -> stimulate ASER
-            scale = min(3.0, abs(delta_c) * 0.8)
+                self.net.inject(n, l_chem_scale)
+        else:
+            l_chem_scale = 0.0
+
+        if delta_c < -0.02:
+            r_chem_scale = min(15.0, abs(delta_c) * 1.6)
             for n in FOOD_RIGHT:
-                self.net.inject(n, self.i_food * scale)
+                self.net.inject(n, r_chem_scale)
+        else:
+            r_chem_scale = 0.0
 
-        # If food is directly ahead along forward line:
-        f_vec = (fx - hx, fy - hy)
-        f_dir = (DX[direction], DY[direction])
-        dot   = f_vec[0] * f_dir[0] + f_vec[1] * f_dir[1]
-        cross = f_dir[0] * f_vec[1] - f_dir[1] * f_vec[0]
-        if dot > 0 and abs(cross) <= 1:
-            for n in FORWARD_CMD:
-                self.net.inject(n, self.i_front_food)
-
-        # Ambient chemotaxis motivation (AWA)
+        # Ambient attractive odor (always motivates forward foraging)
         for n in FOOD_BOOST:
-            self.net.inject(n, self.i_awa)
+            self.net.inject(n, 3.5)
 
-        # Save telemetry for sensory radar
+        # High-school-friendly sensory telemetry
         self.telemetry = {
             "front_dist": front_dist,
             "left_dist": left_dist,
             "right_dist": right_dist,
-            "c_left": c_left,
-            "c_right": c_right,
-            "c_center": c_center,
-            "dc_dt": dc_dt,
             "front_hit": front_hit,
             "left_hit": left_hit,
             "right_hit": right_hit,
+            "c_left": c_left,
+            "c_right": c_right,
+            "c_center": c_center,
             "delta_c": delta_c,
+            "dc_dt": dc_dt,
+            "sense_food_l": int(min(100, max(0, l_chem_scale * 7.0))),
+            "sense_food_r": int(min(100, max(0, r_chem_scale * 7.0))),
+            "sense_nose": int(min(100, max(0, front_intensity * 5.5))),
+            "sense_whisker_l": int(min(100, max(0, left_intensity * 7.0))),
+            "sense_whisker_r": int(min(100, max(0, right_intensity * 7.0))),
         }

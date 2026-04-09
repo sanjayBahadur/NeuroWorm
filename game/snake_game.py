@@ -115,11 +115,15 @@ class WormAgent:
         self.net.reset_counts()
         self.circuit.apply_genome(self.genome)
 
-    def step(self):
+    def step(self, shared_food: tuple[int, int] = None) -> bool:
         if not self.alive:
-            return
+            return False
 
         head, food, body, cur_dir = self.obs
+        if shared_food is not None:
+            food = shared_food
+            self.env.food = shared_food
+
         dist = np.hypot(food[0] - head[0], food[1] - head[1])
         if dist < self.min_dist_to_food:
             self.min_dist_to_food = dist
@@ -134,13 +138,17 @@ class WormAgent:
         self.steps += 1
         self.steps_since_food += 1
 
+        ate = False
         if self.env.score > self.score:
             self.score = self.env.score
             self.steps_since_food = 0
             self.min_dist_to_food = 999.0
+            ate = True
 
         if done or self.steps_since_food > 160:
             self.alive = False
+
+        return ate
 
     @property
     def fitness(self) -> float:
@@ -195,10 +203,31 @@ class SnakeGame:
         ]
         self.focused_idx = 0
         self.generation_steps = 0
+        self.shared_food = self._place_shared_food()
+        for w in self.worms:
+            w.env.food = self.shared_food
+            w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
 
         self.inspector = BrainInspector(width=PANEL_W, height=VIRTUAL_H)
+        self.renderer = Renderer(cell_size=CELL_SIZE, grid_size=self.grid_size)
         self.buttons = []
         self._init_ui_buttons()
+
+    def _place_shared_food(self) -> tuple[int, int]:
+        """Place shared nutrient spore in an unoccupied cell away from all living worms."""
+        occupied = set()
+        for w in self.worms:
+            if getattr(w, "alive", False) and hasattr(w, "obs") and len(w.obs) > 2:
+                for pt in w.obs[2]:
+                    occupied.add(pt)
+        for _ in range(100):
+            pos = (
+                int(np.random.randint(1, self.grid_size - 1)),
+                int(np.random.randint(1, self.grid_size - 1)),
+            )
+            if pos not in occupied:
+                return pos
+        return (self.grid_size // 2, self.grid_size // 2)
 
     def _init_ui_buttons(self):
         bx = GAME_W + 14
@@ -275,8 +304,11 @@ class SnakeGame:
         self.fast_forwarding = False
         self.seed_idx = (self.seed_idx + 1) % len(EVAL_SEEDS)
         seed = EVAL_SEEDS[self.seed_idx]
+        self.shared_food = self._place_shared_food()
         for w in self.worms:
             w.reset(seed=seed)
+            w.env.food = self.shared_food
+            w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
         self.generation_steps = 0
 
     def _draw_loading_notice(self, text):
@@ -310,10 +342,13 @@ class SnakeGame:
         self.seed_idx = (self.seed_idx + 1) % len(EVAL_SEEDS)
         seed = EVAL_SEEDS[self.seed_idx]
 
+        self.shared_food = self._place_shared_food()
         # Reset all 10 worms
         for i, w in enumerate(self.worms):
             w.set_genome(self.ga.population[i].genome)
             w.reset(seed=seed)
+            w.env.food = self.shared_food
+            w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
 
         self.generation_steps = 0
 
@@ -374,9 +409,12 @@ class SnakeGame:
                         self.fps = max(4, self.fps - 4)
                     elif event.key == pg.K_r:
                         self.ga = GeneticOptimizer(pop_size=10, grid_size=self.grid_size)
+                        self.shared_food = self._place_shared_food()
                         for i, w in enumerate(self.worms):
                             w.set_genome(self.ga.population[i].genome)
                             w.reset(seed=EVAL_SEEDS[0])
+                            w.env.food = self.shared_food
+                            w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
                         self.generation_steps = 0
                     elif event.key in (pg.K_1, pg.K_2, pg.K_3, pg.K_4, pg.K_5, pg.K_6, pg.K_7, pg.K_8, pg.K_9):
                         self.focused_idx = event.key - pg.K_1
@@ -431,25 +469,54 @@ class SnakeGame:
                         self.solo_mode = not self.solo_mode
                     elif self.btn_reset.is_clicked(virtual_mouse_pos):
                         self.ga = GeneticOptimizer(pop_size=10, grid_size=self.grid_size)
+                        self.shared_food = self._place_shared_food()
                         for i, w in enumerate(self.worms):
                             w.set_genome(self.ga.population[i].genome)
                             w.reset(seed=EVAL_SEEDS[0])
+                            w.env.food = self.shared_food
+                            w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
                         self.generation_steps = 0
 
             # ── Simulation Step (All 10 Organisms) ────────────────────
             if not self.paused:
                 all_dead = True
+                food_eaten = False
+                eater_pos = None
+                eater_col = None
+
                 for i, w in enumerate(self.worms):
-                    if w.alive:
-                        if self.human_mode and i == self.focused_idx:
-                            w.direction = self.human_dir
-                            w.obs, done = w.env.step(w.direction)
-                            w.steps += 1
-                            if done:
-                                w.alive = False
-                        else:
-                            w.step()
-                        all_dead = False
+                    if not w.alive:
+                        continue
+                    if self.solo_mode and i != self.focused_idx:
+                        continue
+
+                    all_dead = False
+                    if self.human_mode and i == self.focused_idx:
+                        w.direction = self.human_dir
+                        w.env.food = self.shared_food
+                        w.obs, done = w.env.step(w.direction)
+                        w.steps += 1
+                        if w.env.score > w.score:
+                            w.score = w.env.score
+                            w.steps_since_food = 0
+                            food_eaten = True
+                            eater_pos = w.obs[0]
+                            eater_col = w.color
+                        if done:
+                            w.alive = False
+                    else:
+                        ate = w.step(shared_food=self.shared_food)
+                        if ate:
+                            food_eaten = True
+                            eater_pos = w.obs[0]
+                            eater_col = w.color
+
+                if food_eaten and eater_pos is not None:
+                    self.renderer.add_food_burst(eater_pos, eater_col)
+                    self.shared_food = self._place_shared_food()
+                    for w in self.worms:
+                        w.env.food = self.shared_food
+                        w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
 
                 self.generation_steps += 1
                 if all_dead or self.generation_steps >= 400:
@@ -463,7 +530,7 @@ class SnakeGame:
             gen_tag = f"GEN #{self.ga.generation} ({'SOLO' if self.solo_mode else 'SWARM'})"
             game_surf = self.renderer.render_multi_worms(
                 self.worms,
-                self.worms[0].env.food,
+                self.shared_food,
                 gen_info=gen_tag,
                 focused_idx=self.focused_idx,
                 solo_mode=self.solo_mode,

@@ -107,6 +107,8 @@ class Renderer:
             }
             for _ in range(35)
         ]
+        self.burst_particles = []
+        self.floating_popups = []
 
     def render(self, obs: tuple, score: int, game_over: bool, gen_info: str = "") -> pygame.Surface:
         """Single-worm backward compatibility."""
@@ -158,12 +160,77 @@ class Renderer:
             elif solo_mode or True:
                 self._draw_dead_worm(fw, focused_idx)
 
-        # 4. Arena HUD Bar
+        # 4. Nutrient Spore Burst Effects & Popups
+        self._update_and_draw_effects()
+
+        # 5. Arena HUD Bar
         alive_count = sum(1 for w in worms if w.alive)
         leader = max(worms, key=lambda w: (w.score, w.fitness))
         self._draw_arena_hud(alive_count, len(worms), leader, gen_info)
 
         return self.surface
+
+    def add_food_burst(self, grid_pos: tuple, worm_color: tuple = (255, 215, 80)) -> None:
+        """Spawn a juicy bioluminescent particle burst and floating score pop when an egg is eaten."""
+        cs = self.cell_size
+        cx = grid_pos[0] * cs + cs // 2
+        cy = grid_pos[1] * cs + cs // 2
+
+        # 16 glowing particles expanding radially
+        for i in range(16):
+            angle = (i / 16.0) * 2.0 * math.pi + np.random.uniform(-0.2, 0.2)
+            speed = float(np.random.uniform(1.8, 4.5))
+            self.burst_particles.append({
+                "x": float(cx),
+                "y": float(cy),
+                "vx": math.cos(angle) * speed,
+                "vy": math.sin(angle) * speed,
+                "color": worm_color if i % 2 == 0 else (255, 220, 100),
+                "radius": float(np.random.uniform(2.5, 4.5)),
+                "alpha": 255.0,
+                "decay": float(np.random.uniform(9.0, 15.0)),
+            })
+
+        # Floating popup
+        self.floating_popups.append({
+            "x": float(cx),
+            "y": float(cy - 6),
+            "text": "+1 🥚",
+            "color": (255, 235, 110),
+            "alpha": 255.0,
+            "vy": -1.2,
+            "life": 32,
+        })
+
+    def _update_and_draw_effects(self) -> None:
+        """Update and draw all active particle bursts and floating text popups."""
+        # 1. Spore Particles
+        surviving_particles = []
+        for p in self.burst_particles:
+            p["x"] += p["vx"]
+            p["y"] += p["vy"]
+            p["alpha"] -= p["decay"]
+            if p["alpha"] > 8:
+                rad = max(1, int(p["radius"]))
+                p_surf = pygame.Surface((rad * 2 + 2, rad * 2 + 2), pygame.SRCALPHA)
+                col = (*p["color"][:3], int(p["alpha"]))
+                pygame.draw.circle(p_surf, col, (rad + 1, rad + 1), rad)
+                self.surface.blit(p_surf, (int(p["x"]) - rad - 1, int(p["y"]) - rad - 1))
+                surviving_particles.append(p)
+        self.burst_particles = surviving_particles
+
+        # 2. Score Popups
+        surviving_popups = []
+        for pop in self.floating_popups:
+            pop["y"] += pop["vy"]
+            pop["life"] -= 1
+            if pop["life"] > 0:
+                alpha = int((pop["life"] / 32.0) * 255)
+                txt_surf = self.badge_font.render(pop["text"], True, pop["color"])
+                txt_surf.set_alpha(alpha)
+                self.surface.blit(txt_surf, (int(pop["x"] - txt_surf.get_width() // 2), int(pop["y"])))
+                surviving_popups.append(pop)
+        self.floating_popups = surviving_popups
 
     def _draw_soil_arena(self) -> None:
         """Draw background soil substrate with organic border wall."""

@@ -22,7 +22,8 @@ htmlcov/
 # Numpy / training artifacts
 *.npy
 *.npz
-!training/best_params.npy
+!training/pretrained_genome.npy
+runs/
 
 # Connectome data bundled
 !connectome/data/*.csv

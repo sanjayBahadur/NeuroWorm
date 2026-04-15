@@ -22,9 +22,11 @@ from simulation.synaptic_circuit import (
 )
 from game.snake_env import SnakeEnv
 
-PARAMS_PATH = Path(__file__).parent / "best_params.npy"
-DEFAULT_GENOME = DEFAULT_SYNAPTIC_GENOME
-EVAL_SEEDS = [42, 107, 219, 333, 512]  # Multi-seed spanning across 5 configurations
+PRETRAINED_GENOME_PATH = Path(__file__).parent / "pretrained_genome.npy"
+FALLBACK_PARAMS_PATH   = Path(__file__).parent / "best_params.npy"
+DEFAULT_RUNS_DIR       = Path(__file__).parent.parent / "runs"
+DEFAULT_GENOME         = DEFAULT_SYNAPTIC_GENOME
+EVAL_SEEDS             = [42, 107, 219, 333, 512]  # Multi-seed spanning across 5 configurations
 
 
 class Individual:
@@ -48,23 +50,29 @@ class GeneticOptimizer:
     Population of 10 candidates evolving synaptic connection weights across 5 seeds.
     """
 
-    def __init__(self, pop_size: int = 10, grid_size: int = 20, max_eval_steps: int = 500):
+    def __init__(
+        self,
+        pop_size: int = 10,
+        grid_size: int = 20,
+        max_eval_steps: int = 500,
+        save_path: Path = None,
+    ):
         self.pop_size = pop_size
         self.grid_size = grid_size
         self.max_eval_steps = max_eval_steps
+        self.save_path = save_path
 
-        # Load best params if existing
-        if PARAMS_PATH.exists():
-            try:
-                saved = np.load(PARAMS_PATH)
-                if len(saved) == GENE_COUNT:
-                    init_g = saved
-                else:
-                    init_g = DEFAULT_SYNAPTIC_GENOME
-            except Exception:
-                init_g = DEFAULT_SYNAPTIC_GENOME
-        else:
-            init_g = DEFAULT_SYNAPTIC_GENOME
+        # Load pretrained genome read-only if existing
+        init_g = DEFAULT_SYNAPTIC_GENOME
+        for p in (PRETRAINED_GENOME_PATH, FALLBACK_PARAMS_PATH):
+            if p.exists():
+                try:
+                    saved = np.load(p)
+                    if len(saved) == GENE_COUNT:
+                        init_g = saved
+                        break
+                except Exception:
+                    pass
 
         self.population = [Individual(init_g.copy() if i == 0 else None) for i in range(pop_size)]
         self.generation = 1
@@ -147,7 +155,9 @@ class GeneticOptimizer:
 
         if self.population[0].fitness > self.best_individual.fitness:
             self.best_individual = copy.deepcopy(self.population[0])
-            np.save(PARAMS_PATH, self.best_individual.genome)
+            if self.save_path:
+                self.save_path.parent.mkdir(parents=True, exist_ok=True)
+                np.save(self.save_path, self.best_individual.genome)
 
         avg_fit = float(np.mean([ind.fitness for ind in self.population]))
         self.history_best_fitness.append(self.best_individual.fitness)

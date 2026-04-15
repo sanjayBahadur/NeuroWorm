@@ -1,5 +1,4 @@
-"""Unit tests for the Genetic Algorithm Optimizer."""
-
+from pathlib import Path
 import numpy as np
 import pytest
 from training.genetic_algorithm import GeneticOptimizer, DEFAULT_GENOME, EVAL_SEEDS
@@ -55,3 +54,19 @@ def test_fast_forward():
     assert stats["gens_run"] == 2
     assert stats["current_gen"] == 3
     assert stats["evals_per_sec"] > 0
+
+
+def test_ga_does_not_modify_shipped_genome(tmp_path):
+    """Verify that running a GA optimization does not touch training/pretrained_genome.npy."""
+    pretrained_path = Path(__file__).parent.parent / "training" / "pretrained_genome.npy"
+    assert pretrained_path.exists()
+    mtime_before = pretrained_path.stat().st_mtime
+    data_before = np.load(pretrained_path)
+
+    custom_save = tmp_path / "custom_run.npy"
+    ga = GeneticOptimizer(pop_size=4, grid_size=8, max_eval_steps=10, save_path=custom_save)
+    ga.fast_forward(n_generations=2)
+
+    assert pretrained_path.stat().st_mtime == mtime_before
+    data_after = np.load(pretrained_path)
+    assert np.array_equal(data_before, data_after)

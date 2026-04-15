@@ -24,6 +24,7 @@ TAU_SYN     = 5e-3     # synaptic conductance decay: 5 ms
 R_M         = 1e7      # membrane resistance: 10 MΩ
 REFRACTORY  = 2e-3     # refractory period: 2 ms
 I_EXT_SCALE = 1e-10    # scale factor for all current inputs (converts to Amps)
+STEPS_PER_FRAME = 8    # 8 LIF timesteps (4.0 ms) per game step
 
 
 class CElegansLIF:

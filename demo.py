@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--human",  action="store_true",
                         help="Human keyboard control instead of worm brain")
     parser.add_argument("--params", type=str, default=None,
-                        help="Path to best_params.npy for worm encoding")
+                        help="Path to genome array (default: training/pretrained_genome.npy)")
     parser.add_argument("--grid",   type=int, default=20,
                         help="Grid size (default 20)")
     parser.add_argument("--fps",    type=int, default=12,
@@ -34,14 +34,18 @@ def main():
                         help="Launch in true fullscreen mode (toggle with F11 anytime)")
     args = parser.parse_args()
 
-    # Load encoding parameters
+    # Load synaptic genome parameters
+    pretrained_path = Path(__file__).parent / "training" / "pretrained_genome.npy"
     if args.params and Path(args.params).exists():
         theta = np.load(args.params)
         print(f"Loaded params from {args.params}: {theta.round(3)}")
+    elif pretrained_path.exists():
+        theta = np.load(pretrained_path)
+        print(f"Loaded pretrained genome from {pretrained_path}")
     else:
         from training.genetic_algorithm import DEFAULT_GENOME
         theta = DEFAULT_GENOME
-        print("Using default encoding parameters.")
+        print("Using default biological synaptic parameters.")
 
     # Import game (pygame) only here to keep imports clean
     from game.snake_game import SnakeGame

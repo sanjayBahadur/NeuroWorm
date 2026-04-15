@@ -100,9 +100,18 @@ def run_evaluation(
     assert not overlap, f"Held-out seeds must not overlap training seeds ({EVAL_SEEDS}). Found overlap: {overlap}"
 
     # Load evolved genome read-only without modifying anything
-    if PARAMS_PATH.exists():
+    genome_path = None
+    for p in (
+        Path(__file__).parent / "training" / "pretrained_genome.npy",
+        Path(__file__).parent / "training" / "best_params.npy",
+    ):
+        if p.exists():
+            genome_path = p
+            break
+
+    if genome_path is not None:
         try:
-            evolved = np.load(PARAMS_PATH)
+            evolved = np.load(genome_path)
             if len(evolved) != GENE_COUNT:
                 evolved = DEFAULT_SYNAPTIC_GENOME.copy()
         except Exception:

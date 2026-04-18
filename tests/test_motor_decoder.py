@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from connectome.loader import _make_placeholder_connectome
+from connectome.loader import load_connectome
 from simulation.lif_network import CElegansLIF
 from simulation.motor_decoder import MotorDecoder
 from connectome.neuron_groups import REVERSAL_CMD, FORWARD_CMD
@@ -10,7 +10,7 @@ from connectome.neuron_groups import REVERSAL_CMD, FORWARD_CMD
 
 @pytest.fixture
 def net_and_decoder():
-    syn, gap, names = _make_placeholder_connectome()
+    syn, gap, names = load_connectome()
     net     = CElegansLIF(syn, gap, names)
     decoder = MotorDecoder(net)
     return net, decoder

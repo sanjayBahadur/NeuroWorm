@@ -50,3 +50,30 @@ def test_synaptic_circuit_summary():
         assert "value" in card
         assert "strength" in card
         assert "pct_change" in card
+
+
+def test_all_referenced_neurons_exist_in_metadata():
+    """Verify every neuron named in neuron_groups and synaptic_circuit exists in connectome metadata."""
+    from connectome.loader import load_connectome
+    from connectome import neuron_groups
+
+    _, _, valid_names = load_connectome()
+    valid_set = set(valid_names)
+
+    # Check neuron_groups
+    for attr in [
+        "FOOD_LEFT", "FOOD_RIGHT", "FOOD_BOOST",
+        "DANGER_LEFT", "DANGER_RIGHT", "DANGER_FRONT",
+        "FORWARD_CMD", "REVERSAL_CMD",
+        "DORSAL_MOTOR", "VENTRAL_MOTOR",
+        "HEAD_LEFT", "HEAD_RIGHT", "HEAD_DORSAL",
+        "NECK_MOTOR",
+    ]:
+        neurons = getattr(neuron_groups, attr)
+        for n in neurons:
+            assert n in valid_set, f"Neuron '{n}' in neuron_groups.{attr} does not exist in connectome metadata"
+
+    # Check synaptic_circuit
+    for syn in SYNAPSE_DEFINITIONS:
+        assert syn["pre"] in valid_set, f"Pre-synaptic neuron '{syn['pre']}' does not exist in connectome metadata"
+        assert syn["post"] in valid_set, f"Post-synaptic neuron '{syn['post']}' does not exist in connectome metadata"

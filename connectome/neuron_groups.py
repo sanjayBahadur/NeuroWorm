@@ -9,7 +9,7 @@ Neuron roles are approximations used for game sensory/motor mapping.
 # Food-detecting (attractive chemosensory)
 FOOD_LEFT   = ["ASEL"]
 FOOD_RIGHT  = ["ASER"]
-FOOD_BOOST  = ["AWACON", "AWAL", "AWAR"]  # attractive-odor amplifiers
+FOOD_BOOST  = ["AWAL", "AWAR"]  # attractive-odor amplifiers
 
 # Danger-detecting (nociceptive / avoidance)
 DANGER_LEFT  = ["ASHL"]
@@ -36,7 +36,7 @@ HEAD_RIGHT = ["SMDDR"]
 HEAD_DORSAL   = ["SMDVL", "SMDVR"]
 
 # Neck motor — used as a tiebreaker
-NECK_MOTOR = ["RIV", "RIVL", "RIVR"]
+NECK_MOTOR = ["RIVL", "RIVR"]
 
 # ─── ALL GROUPS (for UI / heatmap display) ───────────────────────────────────
 GROUP_LABELS = {

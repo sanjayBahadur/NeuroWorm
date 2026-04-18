@@ -2,14 +2,14 @@
 
 import numpy as np
 import pytest
-from connectome.loader import _make_placeholder_connectome
+from connectome.loader import load_connectome
 from simulation.lif_network import CElegansLIF
 from simulation.sensory_encoder import SensoryEncoder
 
 
 @pytest.fixture
 def net_and_encoder():
-    syn, gap, names = _make_placeholder_connectome()
+    syn, gap, names = load_connectome()
     net     = CElegansLIF(syn, gap, names)
     encoder = SensoryEncoder(net, grid_size=20)
     return net, encoder

@@ -1,6 +1,6 @@
-# Contributing to NeurWorm Snake
+# Contributing to NeuroWorm Snake
 
-Thank you for your interest in contributing to **NeurWorm Snake**! We welcome contributions spanning computational neuroscience, game development, reinforcement learning baselines, and pixel art.
+Thank you for your interest in contributing to **NeuroWorm Snake**! We welcome contributions spanning computational neuroscience, bio-inspired AI, game simulation, and testing.
 
 ---
 
@@ -15,33 +15,55 @@ cd neurworm-snake
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 3. Install dependencies
-pip install -r requirements.txt
+# 3. Install in editable mode with development dependencies
 pip install -e ".[dev]"
 ```
 
 ---
 
-## 🧪 Testing
+## 🧪 Testing & Evaluation
 
-We require all pull requests to pass the test suite:
-
-```bash
-pytest tests/ -v
-```
-
-To run a headless benchmark of the worm's performance:
+All pull requests must pass the test suite and code quality checks:
 
 ```bash
-python benchmark.py --episodes 20
+# Run unit tests
+pytest -q
+
+# Check formatting and linting
+black --check .
+ruff check .
 ```
+
+### Reproducible Evaluation Harness
+
+To run the standard 30-seed evaluation suite and ablation controls:
+
+```bash
+python eval.py
+```
+
+For a rapid smoke check (5 seeds):
+
+```bash
+python eval.py --quick
+```
+
+### Headless Genetic Algorithm Training
+
+To evolve new biological synaptic weights in the headless CLI:
+
+```bash
+python train_ga.py --generations 20 --pop-size 10
+```
+
+Results are saved to `runs/best_genome.npy` without modifying tracked repository files.
 
 ---
 
 ## 📝 Commit Conventions
 
-We adhere to conventional commit messages:
-- `feat:` New feature (e.g. `feat(simulation): add gap junction ohmic current`)
+We adhere to conventional commit messages (`feat:`, `fix:`, `docs:`, `perf:`, `test:`, `chore:`, `ci:`):
+- `feat:` New feature (e.g. `feat(simulation): add degree-preserving connectome shuffling`)
 - `fix:` Bug fix (e.g. `fix(decoder): guard against division by zero at rest`)
 - `docs:` Documentation improvements
 - `perf:` Performance optimizations
@@ -53,5 +75,5 @@ We adhere to conventional commit messages:
 ## 🔬 Biological Accuracy Philosophy
 
 1. **Connectome Topology:** Synaptic and electrical connectivity should remain faithful to published *C. elegans* wiring diagrams (e.g., White et al. 1986, Varshney et al. 2011, Cook et al. 2019).
-2. **Zero In-Circuit Training:** We do not modify internal synaptic weights through backpropagation or gradient descent. Evolution configured the connectome; our task is calibration of the sensory-motor interface.
-3. **Reproducibility:** Experiments should support reproducible random seeds.
+2. **Reproducibility & Honesty:** All claims regarding performance must be verified against the reproducible evaluation harness (`eval.py`) across held-out random seeds.
+3. **Controlled Baselines:** Changes to the neural dynamics or architecture should be ablated against random walk and heuristic controls to confirm empirical contribution.

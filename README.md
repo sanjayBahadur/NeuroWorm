@@ -2,6 +2,8 @@
 
 > A Snake player wired like a tiny worm's brain — and an honest test of whether that wiring actually helps.
 
+<!-- TODO: Add CI badge after owner pushes to GitHub: [![CI](https://github.com/<owner>/neurworm-snake/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/neurworm-snake/actions/workflows/ci.yml) -->
+
 ![NeuroWorm Snake Demo](assets/demo.gif)
 
 ## What is This?

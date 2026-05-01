@@ -11,7 +11,8 @@ license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.26",
-    "pygame>=2.5",
+    "pygame>=2.5; python_version < '3.14'",
+    "pygame-ce>=2.5; python_version >= '3.14'",
     "matplotlib>=3.8",
 ]
 
@@ -26,3 +27,6 @@ select = ["E9", "F63", "F7", "F82"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["connectome", "simulation", "game", "training", "viz", "evaluation"]

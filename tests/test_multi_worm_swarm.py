@@ -51,8 +51,9 @@ def test_renderer_multi_worms(pygame_dummy):
         focused_idx=0,
         solo_mode=False,
     )
-    assert surf.get_width() == 320
-    assert surf.get_height() == 320
+    expected_size = (10 + 2) * 32  # 10 grid cells + 2 wall cells
+    assert surf.get_width() == expected_size
+    assert surf.get_height() == expected_size
 
 
 def test_snake_game_10_worms_init(pygame_dummy):
@@ -89,5 +90,6 @@ def test_food_eating_and_particle_burst(pygame_dummy):
     assert len(game.renderer.floating_popups) == 1
 
     surf = game.renderer.render_multi_worms(game.worms, game.shared_food)
-    assert surf.get_width() == 320
-    assert surf.get_height() == 320
+    expected_size = (10 + 2) * 32  # 10 grid cells + 2 wall cells
+    assert surf.get_width() == expected_size
+    assert surf.get_height() == expected_size

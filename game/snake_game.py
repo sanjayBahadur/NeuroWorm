@@ -30,13 +30,12 @@ from simulation.synaptic_circuit import SynapticCircuit
 from training.genetic_algorithm import GeneticOptimizer, DEFAULT_GENOME, EVAL_SEEDS
 from viz.brain_inspector import BrainInspector
 
-GRID_SIZE  = 20
-CELL_SIZE  = 32
-GAME_W     = GRID_SIZE * CELL_SIZE   # 640
-GAME_H     = GRID_SIZE * CELL_SIZE   # 640
-PANEL_W    = 320                     # 320 for Brain Inspector
-VIRTUAL_W  = GAME_W + PANEL_W        # 960
-VIRTUAL_H  = GAME_H                  # 640
+from game.layout import (
+    GRID_SIZE, CELL, WALL, FIELD_PX, ARENA_PX,
+    GAME_W, GAME_H, PANEL_W, VIRTUAL_W, VIRTUAL_H,
+    cell_to_px, cell_center_px
+)
+CELL_SIZE  = CELL
 
 # Color Palette
 C_PANEL_BG = (18, 12, 8)
@@ -214,33 +213,33 @@ class SnakeGame:
         self._init_ui_buttons()
 
     def _place_shared_food(self) -> tuple[int, int]:
-        """Place shared nutrient spore in an unoccupied cell away from all living worms."""
+        """Place shared nutrient spore across the full 0..g-1 grid, avoiding all active and drawn bodies."""
         occupied = set()
         for w in self.worms:
-            if getattr(w, "alive", False) and hasattr(w, "obs") and len(w.obs) > 2:
+            if hasattr(w, "obs") and len(w.obs) > 2 and w.obs[2]:
                 for pt in w.obs[2]:
                     occupied.add(pt)
-        for _ in range(100):
+        for _ in range(200):
             pos = (
-                int(np.random.randint(1, self.grid_size - 1)),
-                int(np.random.randint(1, self.grid_size - 1)),
+                int(np.random.randint(0, self.grid_size)),
+                int(np.random.randint(0, self.grid_size)),
             )
             if pos not in occupied:
                 return pos
         return (self.grid_size // 2, self.grid_size // 2)
 
     def _init_ui_buttons(self):
-        bx = GAME_W + 14
-        w = PANEL_W - 28
-        h = 22
-        self.btn_ff    = Button((bx, 452, w, h), "⏩ Fast Forward 100x", "F")
-        self.btn_next  = Button((bx, 478, w, h), "⏭ Evolve Next Gen",   "N")
-        self.btn_pause = Button((bx, 504, w, h), "⏯ Pause / Play",       "SPC")
+        bx = GAME_W + 16
+        w = PANEL_W - 32
+        h = 24
+        self.btn_ff    = Button((bx, 480, w, h), "⏩ Fast Forward 100x", "F")
+        self.btn_next  = Button((bx, 510, w, h), "⏭ Evolve Next Gen",   "N")
+        self.btn_pause = Button((bx, 540, w, h), "⏯ Pause / Play",       "SPC")
         btn_w2 = (w - 8) // 2
-        self.btn_spdup = Button((bx, 530, btn_w2, h), "➕ Faster", "+")
-        self.btn_spddn = Button((bx + btn_w2 + 8, 530, btn_w2, h), "➖ Slower", "-")
-        self.btn_mode  = Button((bx, 556, w, h), "👥 Swarm / Solo Mode", "M")
-        self.btn_reset = Button((bx, 582, w, h), "🔄 Reset GA Population", "R")
+        self.btn_spdup = Button((bx, 570, btn_w2, h), "➕ Faster", "+")
+        self.btn_spddn = Button((bx + btn_w2 + 8, 570, btn_w2, h), "➖ Slower", "-")
+        self.btn_mode  = Button((bx, 600, w, h), "👥 Swarm / Solo Mode", "M")
+        self.btn_reset = Button((bx, 630, w, h), "🔄 Reset GA Population", "R")
 
         self.buttons = [
             self.btn_ff, self.btn_next, self.btn_pause,
@@ -570,5 +569,5 @@ class SnakeGame:
         # Footer hints
         hint1 = self.font_body.render("1-0/Click: Inspect | TAB: View Mode", True, C_MUTED)
         hint2 = self.font_body.render("M: Swarm/Solo | F11: Fullscreen | SPC", True, C_MUTED)
-        self.virtual_screen.blit(hint1, (GAME_W + 14, 610))
-        self.virtual_screen.blit(hint2, (GAME_W + 14, 624))
+        self.virtual_screen.blit(hint1, (GAME_W + 16, 665))
+        self.virtual_screen.blit(hint2, (GAME_W + 16, 680))

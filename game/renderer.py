@@ -15,6 +15,12 @@ from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
 import pygame
 
+from game.layout import (
+    GRID_SIZE, CELL, WALL, FIELD_W, FIELD_H, ARENA_W, ARENA_H,
+    cell_to_px as layout_cell_to_px,
+    cell_center_px as layout_cell_center_px,
+)
+
 # ─── COLOR PALETTES ───────────────────────────────────────────────────────────
 SOIL_DEEP    = (14, 9, 6)       # Rich dark organic peat
 SOIL_TILE    = (24, 16, 11)     # Soil substrate
@@ -81,25 +87,32 @@ WORM_PALETTES = [
 class Renderer:
     """Renders the biological soil arena and procedural vermiform organisms."""
 
-    def __init__(self, cell_size: int = 32, grid_size: int = 20):
+    def __init__(self, cell_size: int = CELL, grid_size: int = GRID_SIZE, wall_cells: int = WALL):
         if not pygame.font.get_init():
             pygame.font.init()
         self.cell_size = cell_size
         self.grid_size = grid_size
-        self.W = cell_size * grid_size
-        self.H = cell_size * grid_size
+        self.wall_cells = wall_cells
+        self.field_w = cell_size * grid_size
+        self.field_h = cell_size * grid_size
+        self.W = (grid_size + 2 * wall_cells) * cell_size
+        self.H = (grid_size + 2 * wall_cells) * cell_size
 
         self.surface = pygame.Surface((self.W, self.H))
         self.font = pygame.font.SysFont("monospace", 12, bold=True)
         self.badge_font = pygame.font.SysFont("monospace", 9, bold=True)
         self.frame_count = 0
 
-        # Ambient floating soil spore particles
+        # Ambient floating soil spore particles inside playable field
         rng = np.random.default_rng(42)
+        min_x = self.wall_cells * self.cell_size
+        max_x = min_x + self.field_w
+        min_y = self.wall_cells * self.cell_size
+        max_y = min_y + self.field_h
         self.motes = [
             {
-                "x": float(rng.uniform(10, self.W - 10)),
-                "y": float(rng.uniform(10, self.H - 10)),
+                "x": float(rng.uniform(min_x + 5, max_x - 5)),
+                "y": float(rng.uniform(min_y + 5, max_y - 5)),
                 "vx": float(rng.uniform(-0.15, 0.15)),
                 "vy": float(rng.uniform(-0.15, 0.15)),
                 "size": int(rng.integers(1, 3)),
@@ -109,6 +122,14 @@ class Renderer:
         ]
         self.burst_particles = []
         self.floating_popups = []
+
+    def cell_to_px(self, x: float, y: float) -> tuple[float, float]:
+        """Return top-left pixel coordinates of grid cell (x, y) with outer wall band."""
+        return (x + self.wall_cells) * self.cell_size, (y + self.wall_cells) * self.cell_size
+
+    def cell_center_px(self, x: float, y: float) -> tuple[float, float]:
+        """Return center pixel coordinates of grid cell (x, y) with outer wall band."""
+        return (x + self.wall_cells + 0.5) * self.cell_size, (y + self.wall_cells + 0.5) * self.cell_size
 
     def render(self, obs: tuple, score: int, game_over: bool, gen_info: str = "") -> pygame.Surface:
         """Single-worm backward compatibility."""
@@ -172,9 +193,7 @@ class Renderer:
 
     def add_food_burst(self, grid_pos: tuple, worm_color: tuple = (255, 215, 80)) -> None:
         """Spawn a juicy bioluminescent particle burst and floating score pop when an egg is eaten."""
-        cs = self.cell_size
-        cx = grid_pos[0] * cs + cs // 2
-        cy = grid_pos[1] * cs + cs // 2
+        cx, cy = self.cell_center_px(*grid_pos)
 
         # 16 glowing particles expanding radially
         for i in range(16):
@@ -233,40 +252,50 @@ class Renderer:
         self.floating_popups = surviving_popups
 
     def _draw_soil_arena(self) -> None:
-        """Draw background soil substrate with organic border wall."""
+        """Draw background soil substrate with outer border wall surrounding the playable grid."""
         cs = self.cell_size
         g = self.grid_size
+        w_px = self.wall_cells * cs
 
-        # Soil field background
-        field_rect = pygame.Rect(cs, cs, (g - 2) * cs, (g - 2) * cs)
+        # 1. Inner Playable Soil Field (0..g-1)
+        field_rect = pygame.Rect(w_px, w_px, g * cs, g * cs)
         pygame.draw.rect(self.surface, SOIL_TILE, field_rect)
 
-        # Subtle organic grid filaments
+        # 2. Subtle organic grid filaments inside the field
+        top_y = w_px
+        bot_y = w_px + g * cs
+        left_x = w_px
+        right_x = w_px + g * cs
         for i in range(1, g):
-            px = i * cs
-            pygame.draw.line(self.surface, (32, 22, 16), (px, cs), (px, self.H - cs), 1)
-            pygame.draw.line(self.surface, (32, 22, 16), (cs, px), (self.W - cs, px), 1)
+            px, _ = self.cell_to_px(i, 0)
+            pygame.draw.line(self.surface, (32, 22, 16), (px, top_y), (px, bot_y), 1)
+            _, py = self.cell_to_px(0, i)
+            pygame.draw.line(self.surface, (32, 22, 16), (left_x, py), (right_x, py), 1)
 
-        # Border walls with beveled stone shading
-        # Top & Bottom borders
-        pygame.draw.rect(self.surface, BORDER_STONE, (0, 0, self.W, cs))
-        pygame.draw.rect(self.surface, BORDER_STONE, (0, self.H - cs, self.W, cs))
-        # Left & Right borders
-        pygame.draw.rect(self.surface, BORDER_STONE, (0, 0, cs, self.H))
-        pygame.draw.rect(self.surface, BORDER_STONE, (self.W - cs, 0, cs, self.H))
+        # 3. Outer border walls (strictly outside playable cells)
+        # Top & Bottom outer bands
+        pygame.draw.rect(self.surface, BORDER_STONE, (0, 0, self.W, w_px))
+        pygame.draw.rect(self.surface, BORDER_STONE, (0, self.H - w_px, self.W, w_px))
+        # Left & Right outer bands
+        pygame.draw.rect(self.surface, BORDER_STONE, (0, 0, w_px, self.H))
+        pygame.draw.rect(self.surface, BORDER_STONE, (self.W - w_px, 0, w_px, self.H))
 
-        # Inner border highlight line
-        pygame.draw.rect(self.surface, BORDER_LIT, (cs - 1, cs - 1, (g - 2) * cs + 2, (g - 2) * cs + 2), 1)
+        # 4. Border highlight line along the inner wall edge
+        pygame.draw.rect(self.surface, BORDER_LIT, field_rect, 1)
 
     def _update_and_draw_motes(self) -> None:
-        """Drift subtle microscopic nutrient particles across the arena."""
-        cs = self.cell_size
+        """Drift subtle microscopic nutrient particles across the inner playable field."""
+        min_x = self.wall_cells * self.cell_size
+        max_x = min_x + self.field_w
+        min_y = self.wall_cells * self.cell_size
+        max_y = min_y + self.field_h
+
         for m in self.motes:
             m["x"] += m["vx"]
             m["y"] += m["vy"]
-            if m["x"] < cs or m["x"] > self.W - cs:
+            if m["x"] < min_x or m["x"] > max_x:
                 m["vx"] *= -1
-            if m["y"] < cs or m["y"] > self.H - cs:
+            if m["y"] < min_y or m["y"] > max_y:
                 m["vy"] *= -1
 
             col = (200, 180, 140, m["alpha"])
@@ -276,10 +305,7 @@ class Renderer:
 
     def _draw_nutrient_spore(self, food_pos: tuple) -> None:
         """Bioluminescent glowing bacterial egg colony."""
-        fx, fy = food_pos
-        cs = self.cell_size
-        cx = fx * cs + cs // 2
-        cy = fy * cs + cs // 2
+        cx, cy = self.cell_center_px(*food_pos)
 
         # Glowing pulsing aura
         pulse = 1.0 + 0.18 * math.sin(self.frame_count * 0.18)
@@ -299,10 +325,9 @@ class Renderer:
         body = worm.obs[2]
         if not body:
             return
-        cs = self.cell_size
 
         # Faint connected ghost trail
-        pts = [(bx * cs + cs // 2, by * cs + cs // 2) for bx, by in body]
+        pts = [self.cell_center_px(bx, by) for bx, by in body]
         for i in range(len(pts) - 1):
             pygame.draw.line(self.surface, (38, 25, 18), pts[i], pts[i + 1], 8)
         for pt in pts:
@@ -321,7 +346,6 @@ class Renderer:
         if not body:
             return
 
-        cs = self.cell_size
         n = len(body)
         pal = WORM_PALETTES[w_idx % len(WORM_PALETTES)]
         cuticle_col = pal["cuticle"]
@@ -329,7 +353,7 @@ class Renderer:
         glow_col    = pal["glow"]
 
         # Center coordinates along the spine
-        pts = [(bx * cs + cs // 2, by * cs + cs // 2) for bx, by in body]
+        pts = [self.cell_center_px(bx, by) for bx, by in body]
 
         # ── 1. Continuous Tapered Ribbon Body ─────────────────────────
         # Draw from tail to head
@@ -406,22 +430,24 @@ class Renderer:
         self.surface.blit(b_txt, (bx + 3, by + 1))
 
     def _draw_arena_hud(self, alive_count: int, total_count: int, leader, gen_info: str) -> None:
-        """Sleek semi-transparent HUD banner across the arena top."""
-        hud_h = 24
-        hud_bg = pygame.Surface((self.W, hud_h), pygame.SRCALPHA)
+        """Sleek semi-transparent HUD banner drawn strictly within the top outer wall band."""
+        w_px = self.wall_cells * self.cell_size
+        hud_bg = pygame.Surface((self.W, w_px), pygame.SRCALPHA)
         hud_bg.fill((12, 8, 5, 210))
         self.surface.blit(hud_bg, (0, 0))
+
+        ty = max(2, (w_px - self.font.get_height()) // 2)
 
         # Left: Organism population count
         pop_col = (0, 230, 140) if alive_count > 3 else ((255, 200, 60) if alive_count > 0 else (255, 80, 80))
         pop_lbl = self.font.render(f"WORMS: {alive_count}/{total_count} ALIVE", True, pop_col)
-        self.surface.blit(pop_lbl, (12, 4))
+        self.surface.blit(pop_lbl, (12, ty))
 
         # Center: Generation tag
         if gen_info:
             g_lbl = self.font.render(gen_info, True, TEXT_CREAM)
-            self.surface.blit(g_lbl, (self.W // 2 - g_lbl.get_width() // 2, 4))
+            self.surface.blit(g_lbl, (self.W // 2 - g_lbl.get_width() // 2, ty))
 
         # Right: Champion score
         champ_lbl = self.font.render(f"LEADER: #{leader.id} ({leader.score} EGGS)", True, SCORE_GOLD)
-        self.surface.blit(champ_lbl, (self.W - champ_lbl.get_width() - 12, 4))
+        self.surface.blit(champ_lbl, (self.W - champ_lbl.get_width() - 12, ty))

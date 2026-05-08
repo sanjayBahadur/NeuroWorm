@@ -31,18 +31,20 @@ class SnakeEnv:
         self.body: list[tuple[int, int]] = []
         self.food: tuple[int, int] = (0, 0)
         self.done = False
+        self.death_cause: Optional[str] = None
         self.reset()
 
     def reset(self) -> tuple:
         """Reset to initial state. Returns first observation."""
         g = self.grid_size
         cx, cy = g // 2, g // 2
-        self.body      = [(cx, cy), (cx - 1, cy), (cx - 2, cy)]
-        self.direction = "RIGHT"
-        self.score     = 0
-        self.steps     = 0
-        self.done      = False
-        self.food      = self._place_food()
+        self.body        = [(cx, cy), (cx - 1, cy), (cx - 2, cy)]
+        self.direction   = "RIGHT"
+        self.score       = 0
+        self.steps       = 0
+        self.done        = False
+        self.death_cause = None
+        self.food        = self._place_food()
         return self._obs()
 
     def step(self, action: str) -> tuple[tuple, bool]:
@@ -73,9 +75,13 @@ class SnakeEnv:
             nx < 0 or ny < 0
             or nx >= self.grid_size
             or ny >= self.grid_size
-            or new_head in self.body[:-1]
         ):
             self.done = True
+            self.death_cause = "wall"
+            return self._obs(), True
+        elif new_head in self.body[:-1]:
+            self.done = True
+            self.death_cause = "self"
             return self._obs(), True
 
         # Move snake

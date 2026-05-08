@@ -80,11 +80,14 @@ class WormAgent:
         color: tuple,
         grid_size: int = 20,
         seed: int = 42,
+        starve_limit: int = 160,
     ):
         self.id = worm_id
         self.genome = genome.copy()
         self.color = color
         self.grid_size = grid_size
+        self.starve_limit = starve_limit
+        self.death_cause: str | None = None
         self.env = SnakeEnv(grid_size=grid_size, seed=seed)
         self.net = build_network()
         self.circuit = SynapticCircuit(self.net)
@@ -103,6 +106,7 @@ class WormAgent:
         self.obs = self.env.reset()
         self.direction = "RIGHT"
         self.alive = True
+        self.death_cause = None
         self.steps = 0
         self.score = 0
         self.steps_since_food = 0
@@ -134,6 +138,7 @@ class WormAgent:
 
         self.direction = self.decoder.decode(self.direction)
         self.obs, done = self.env.step(self.direction)
+        self.direction = self.env.direction
         self.steps += 1
         self.steps_since_food += 1
 
@@ -144,8 +149,12 @@ class WormAgent:
             self.min_dist_to_food = 999.0
             ate = True
 
-        if done or self.steps_since_food > 160:
+        if done:
             self.alive = False
+            self.death_cause = self.env.death_cause
+        elif self.steps_since_food > self.starve_limit:
+            self.alive = False
+            self.death_cause = "starved"
 
         return ate
 

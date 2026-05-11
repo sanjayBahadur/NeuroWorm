@@ -175,6 +175,7 @@ class SnakeGame:
         theta: np.ndarray = None,
         scale: float = None,
         fullscreen: bool = False,
+        seed: int | None = None,
     ):
         pg.init()
         self.grid_size = grid_size
@@ -188,6 +189,7 @@ class SnakeGame:
         self.inspector_tab = "flow"  # "flow" or "synapses"
         self.solo_mode = False
         self.human_dir = "RIGHT"
+        self.rng = np.random.default_rng(seed)
 
         self.ga = GeneticOptimizer(pop_size=10, grid_size=grid_size)
 
@@ -230,8 +232,8 @@ class SnakeGame:
                     occupied.add(pt)
         for _ in range(200):
             pos = (
-                int(np.random.randint(0, self.grid_size)),
-                int(np.random.randint(0, self.grid_size)),
+                int(self.rng.integers(0, self.grid_size)),
+                int(self.rng.integers(0, self.grid_size)),
             )
             if pos not in occupied:
                 return pos
@@ -374,6 +376,53 @@ class SnakeGame:
         self.screen.blit(scaled_surf, (offset_x, offset_y))
         pg.display.flip()
 
+    def step_simulation(self) -> bool:
+        """
+        Advance one simulation tick for all active organisms.
+        Worms are processed in a per-tick random order to prevent bias.
+        When any worm eats an egg, the egg is immediately relocated so no double-eat can occur.
+        Returns True if all organisms are dead or generation cap is reached.
+        """
+        all_dead = True
+        order = self.rng.permutation(len(self.worms))
+
+        for idx in order:
+            w = self.worms[idx]
+            if not w.alive:
+                continue
+            if self.solo_mode and idx != self.focused_idx:
+                continue
+
+            all_dead = False
+            if self.human_mode and idx == self.focused_idx:
+                w.direction = self.human_dir
+                w.env.food = self.shared_food
+                w.obs, done = w.env.step(w.direction)
+                w.direction = w.env.direction
+                w.steps += 1
+                if w.env.score > w.score:
+                    w.score = w.env.score
+                    w.steps_since_food = 0
+                    self.renderer.add_food_burst(w.obs[0], w.color)
+                    self.shared_food = self._place_shared_food()
+                    for other in self.worms:
+                        other.env.food = self.shared_food
+                        other.obs = (other.obs[0], self.shared_food, other.obs[2], other.obs[3])
+                if done:
+                    w.alive = False
+                    w.death_cause = w.env.death_cause
+            else:
+                ate = w.step(shared_food=self.shared_food)
+                if ate:
+                    self.renderer.add_food_burst(w.obs[0], w.color)
+                    self.shared_food = self._place_shared_food()
+                    for other in self.worms:
+                        other.env.food = self.shared_food
+                        other.obs = (other.obs[0], self.shared_food, other.obs[2], other.obs[3])
+
+        self.generation_steps += 1
+        return all_dead or (self.generation_steps >= 400)
+
     def run(self):
         pygame = self._init_pygame()
         running = True
@@ -487,47 +536,8 @@ class SnakeGame:
 
             # ── Simulation Step (All 10 Organisms) ────────────────────
             if not self.paused:
-                all_dead = True
-                food_eaten = False
-                eater_pos = None
-                eater_col = None
-
-                for i, w in enumerate(self.worms):
-                    if not w.alive:
-                        continue
-                    if self.solo_mode and i != self.focused_idx:
-                        continue
-
-                    all_dead = False
-                    if self.human_mode and i == self.focused_idx:
-                        w.direction = self.human_dir
-                        w.env.food = self.shared_food
-                        w.obs, done = w.env.step(w.direction)
-                        w.steps += 1
-                        if w.env.score > w.score:
-                            w.score = w.env.score
-                            w.steps_since_food = 0
-                            food_eaten = True
-                            eater_pos = w.obs[0]
-                            eater_col = w.color
-                        if done:
-                            w.alive = False
-                    else:
-                        ate = w.step(shared_food=self.shared_food)
-                        if ate:
-                            food_eaten = True
-                            eater_pos = w.obs[0]
-                            eater_col = w.color
-
-                if food_eaten and eater_pos is not None:
-                    self.renderer.add_food_burst(eater_pos, eater_col)
-                    self.shared_food = self._place_shared_food()
-                    for w in self.worms:
-                        w.env.food = self.shared_food
-                        w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
-
-                self.generation_steps += 1
-                if all_dead or self.generation_steps >= 400:
+                gen_over = self.step_simulation()
+                if gen_over:
                     pg.time.wait(350)
                     self._evolve_and_next_generation()
 

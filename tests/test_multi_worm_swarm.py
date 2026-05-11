@@ -93,3 +93,41 @@ def test_food_eating_and_particle_burst(pygame_dummy):
     expected_size = (10 + 2) * 32  # 10 grid cells + 2 wall cells
     assert surf.get_width() == expected_size
     assert surf.get_height() == expected_size
+
+
+def test_shared_egg_scores_once_when_two_worms_reach_it(pygame_dummy):
+    """Verify that when two worms are both one step from the same egg, ticking once yields exactly 1 score."""
+    game = SnakeGame(grid_size=15, fps=12, seed=42)
+    target_egg = (5, 5)
+    game.shared_food = target_egg
+
+    # Setup worm 0: at (4, 5) moving RIGHT into (5, 5)
+    w0 = game.worms[0]
+    w0.env.body = [(4, 5), (3, 5), (2, 5)]
+    w0.env.direction = "RIGHT"
+    w0.direction = "RIGHT"
+    w0.obs = ((4, 5), target_egg, list(w0.env.body), "RIGHT")
+    w0.env.food = target_egg
+    w0.decoder.decode = lambda d: "RIGHT"
+
+    # Setup worm 1: at (5, 4) moving DOWN into (5, 5)
+    w1 = game.worms[1]
+    w1.env.body = [(5, 4), (5, 3), (5, 2)]
+    w1.env.direction = "DOWN"
+    w1.direction = "DOWN"
+    w1.obs = ((5, 4), target_egg, list(w1.env.body), "DOWN")
+    w1.env.food = target_egg
+    w1.decoder.decode = lambda d: "DOWN"
+
+    # Deactivate the other 8 worms for this isolated test
+    for w in game.worms[2:]:
+        w.alive = False
+
+    initial_total_score = w0.score + w1.score
+    game.step_simulation()
+
+    # Total score increase across all worms must be exactly 1
+    new_total_score = w0.score + w1.score
+    assert new_total_score - initial_total_score == 1
+    # Egg must have immediately moved away from (5, 5)
+    assert game.shared_food != target_egg

@@ -213,6 +213,11 @@ class SnakeGame:
         ]
         self.focused_idx = 0
         self.generation_steps = 0
+        self.state: str = "RUNNING"
+        self.gen_end_timer: float = 0.0
+        self.gen_end_duration: float = 1.2
+        self.gen_end_banner_text: str = ""
+        self.history: list[dict] = []
         self.shared_food = self._place_shared_food()
         for w in self.worms:
             w.env.food = self.shared_food
@@ -320,6 +325,16 @@ class SnakeGame:
             w.env.food = self.shared_food
             w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
         self.generation_steps = 0
+        self.state = "RUNNING"
+        self.gen_end_timer = 0.0
+
+        # Record GA fast-forward result into history (A5)
+        self.history.append({
+            "gen": self.ga.generation,
+            "best_score": int(res["best_score"]),
+            "avg_score": round(float(np.mean([ind.score for ind in self.ga.population])), 2),
+            "best_fitness": round(float(res["best_fitness"]), 2),
+        })
 
     def _draw_loading_notice(self, text):
         if not hasattr(self, "virtual_screen") or self.virtual_screen is None:
@@ -333,7 +348,62 @@ class SnakeGame:
         txt = font.render(text, True, C_HEADER)
         self.virtual_screen.blit(txt, (box.centerx - txt.get_width() // 2, box.centery - txt.get_height() // 2))
 
+    def _record_generation_history(self):
+        """Record real swarm performance at generation boundaries."""
+        if self.history and self.history[-1]["gen"] == self.ga.generation:
+            return
+        scores = [w.score for w in self.worms]
+        fits = [w.fitness for w in self.worms]
+        best_score = max(scores) if scores else 0
+        avg_score = float(np.mean(scores)) if scores else 0.0
+        best_fitness = max(fits) if fits else 0.0
+        self.history.append({
+            "gen": self.ga.generation,
+            "best_score": int(best_score),
+            "avg_score": round(avg_score, 2),
+            "best_fitness": round(best_fitness, 2),
+        })
+
+    def start_generation_end(self):
+        """Non-blocking transition into GEN_END state (A4)."""
+        self.state = "GEN_END"
+        self.gen_end_timer = 0.0
+        for w in self.worms:
+            if w.alive:
+                w.death_cause = "timeout"
+                w.alive = False
+
+        scores = [w.score for w in self.worms]
+        best_score = max(scores) if scores else 0
+        self.gen_end_banner_text = f"Generation {self.ga.generation} finished — best: {best_score} eggs"
+        self._record_generation_history()
+
+    def _draw_gen_end_banner(self):
+        """Draw non-blocking generation end banner across the arena."""
+        box_w = 420
+        box_h = 76
+        bx = (GAME_W - box_w) // 2
+        by = (GAME_H - box_h) // 2
+        banner_rect = pg.Rect(bx, by, box_w, box_h)
+
+        card_surf = pg.Surface((box_w, box_h), pg.SRCALPHA)
+        card_surf.fill((18, 12, 8, 235))
+        self.virtual_screen.blit(card_surf, (bx, by))
+        pg.draw.rect(self.virtual_screen, (200, 160, 60), banner_rect, 2, border_radius=8)
+
+        font_title = getattr(self, "font_title", None) or pg.font.SysFont("monospace", 14, bold=True)
+        font_body = getattr(self, "font_body", None) or pg.font.SysFont("monospace", 10)
+
+        title_lbl = font_title.render(self.gen_end_banner_text, True, (255, 235, 140))
+        rem_sec = max(0.0, self.gen_end_duration - self.gen_end_timer)
+        sub_lbl = font_body.render(f"Evolving next generation... {rem_sec:.1f}s (press N to skip)", True, (200, 184, 150))
+
+        self.virtual_screen.blit(title_lbl, (bx + (box_w - title_lbl.get_width()) // 2, by + 16))
+        self.virtual_screen.blit(sub_lbl, (bx + (box_w - sub_lbl.get_width()) // 2, by + 44))
+
     def _evolve_and_next_generation(self):
+        self._record_generation_history()
+
         # Update fitness for each individual
         for i, w in enumerate(self.worms):
             self.ga.population[i].fitness = w.fitness
@@ -361,6 +431,8 @@ class SnakeGame:
             w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
 
         self.generation_steps = 0
+        self.state = "RUNNING"
+        self.gen_end_timer = 0.0
 
     def _present_frame(self):
         if not hasattr(self, "screen") or self.screen is None or not hasattr(self, "virtual_screen") or self.virtual_screen is None:
@@ -473,6 +545,9 @@ class SnakeGame:
                             w.env.food = self.shared_food
                             w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
                         self.generation_steps = 0
+                        self.state = "RUNNING"
+                        self.gen_end_timer = 0.0
+                        self.history.clear()
                     elif event.key in (pg.K_1, pg.K_2, pg.K_3, pg.K_4, pg.K_5, pg.K_6, pg.K_7, pg.K_8, pg.K_9):
                         self.focused_idx = event.key - pg.K_1
                     elif event.key == pg.K_0:
@@ -533,12 +608,19 @@ class SnakeGame:
                             w.env.food = self.shared_food
                             w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
                         self.generation_steps = 0
+                        self.state = "RUNNING"
+                        self.gen_end_timer = 0.0
+                        self.history.clear()
 
             # ── Simulation Step (All 10 Organisms) ────────────────────
-            if not self.paused:
+            if self.state == "RUNNING" and not self.paused:
                 gen_over = self.step_simulation()
                 if gen_over:
-                    pg.time.wait(350)
+                    self.start_generation_end()
+            elif self.state == "GEN_END":
+                dt = 1.0 / max(1, self.fps)
+                self.gen_end_timer += dt
+                if self.gen_end_timer >= self.gen_end_duration:
                     self._evolve_and_next_generation()
 
             # ── Drawing on Virtual Surface ────────────────────────────
@@ -554,6 +636,9 @@ class SnakeGame:
                 solo_mode=self.solo_mode,
             )
             self.virtual_screen.blit(game_surf, (0, 0))
+
+            if self.state == "GEN_END":
+                self._draw_gen_end_banner()
 
             # 2. Right: Interactive Brain Inspector Dashboard
             self._draw_dashboard(virtual_mouse_pos)

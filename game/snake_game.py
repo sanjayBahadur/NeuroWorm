@@ -415,6 +415,9 @@ class SnakeGame:
         if self.ga.population[0].fitness > self.ga.best_individual.fitness:
             self.ga.best_individual = copy.deepcopy(self.ga.population[0])
 
+        self.ga.history_best_fitness.append(float(self.ga.best_individual.fitness))
+        self.ga.history_avg_fitness.append(float(np.mean([ind.fitness for ind in self.ga.population])))
+
         # Evolve (top 3 champions preserved in slots 0, 1, 2)
         self.ga.evolve_next_generation()
 

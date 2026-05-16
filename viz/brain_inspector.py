@@ -3,24 +3,25 @@ High-School-Friendly Brain Activity & Synaptic Evolution Inspector.
 
 Replaces confusing raw matrices with an intuitive, beautifully formatted
 application panel that anyone with minimum high-school knowledge can read instantly:
-  1. 🧠 Brain Flow View (Live Thinking):
+  1. Brain Flow View (Live Thinking):
      - Stage 1: Senses (Food Odor L/R, Nose Touch Warning, Side Whiskers)
      - Stage 2: Decisions (Forward Crawl Drive vs Emergency Reversal Reflex)
      - Stage 3: Muscles (Steer Left vs Steer Right)
      - Plain-English Thought Balloon: e.g. "Smells food on Left -> Steering toward egg!"
-  2. 🔬 Synapses View (Genetic Evolution):
+  2. Synapses View (Genetic Evolution):
      - Human-readable cards showing what evolution just strengthened/weakened
        (e.g., "Nose Touch -> Reversal Reflex: +68% stronger across generations")
-  3. 👥 Live 10-Worm Population Roster with click-to-inspect
+  3. Live 10-Worm Population Roster with click-to-inspect
 """
 
 from typing import List, Dict, Any, Optional
 import numpy as np
 import pygame as pg
 from simulation.synaptic_circuit import SYNAPSE_DEFINITIONS
+from game.layout import PANEL_W, VIRTUAL_H
+from game.theme import get_font
 
-PANEL_W = 320
-PANEL_H = 640
+PANEL_H = VIRTUAL_H
 
 # Colors
 C_PANEL_BG  = (18, 12, 8)
@@ -45,13 +46,13 @@ class BrainInspector:
         self.W = width
         self.H = height
         self.surface = pg.Surface((self.W, self.H))
-        self.font_title = pg.font.SysFont("monospace", 13, bold=True)
-        self.font_bold  = pg.font.SysFont("monospace", 10, bold=True)
-        self.font_body  = pg.font.SysFont("monospace", 10)
-        self.font_quote = pg.font.SysFont("monospace", 9, bold=True)
+        self.font_title = get_font("title", 14)
+        self.font_bold  = get_font("card_title", 13)
+        self.font_body  = get_font("body", 12)
+        self.font_quote = get_font("small", 12)
 
-        self.tab_flow_rect = pg.Rect(12, 38, 140, 22)
-        self.tab_syn_rect  = pg.Rect(158, 38, 150, 22)
+        self.tab_flow_rect = pg.Rect(12, 38, (self.W - 32) // 2, 24)
+        self.tab_syn_rect  = pg.Rect(16 + (self.W - 32) // 2, 38, (self.W - 32) // 2, 24)
 
     def render(
         self,
@@ -69,7 +70,7 @@ class BrainInspector:
         app_title = self.font_title.render("NEUROWORM LAB", True, C_HEADER)
         self.surface.blit(app_title, (14, 10))
 
-        champ_tag = "🥇 CHAMP 1" if worm.id == 1 else ("🥈 CHAMP 2" if worm.id == 2 else ("🥉 CHAMP 3" if worm.id == 3 else f"WORM #{worm.id}"))
+        champ_tag = "CHAMPION 1" if worm.id == 1 else ("CHAMPION 2" if worm.id == 2 else ("CHAMPION 3" if worm.id == 3 else f"WORM #{worm.id}"))
         sub_txt = self.font_body.render(f"Inspecting: {champ_tag}", True, getattr(worm, "color", C_TEXT))
         self.surface.blit(sub_txt, (14, 25))
 
@@ -94,7 +95,7 @@ class BrainInspector:
         col1 = (55, 38, 22) if is_active1 else ((40, 26, 16) if is_hover1 else (26, 17, 11))
         pg.draw.rect(self.surface, col1, self.tab_flow_rect, border_radius=4)
         pg.draw.rect(self.surface, C_HEADER if is_active1 else C_BOX_BORDER, self.tab_flow_rect, 1, border_radius=4)
-        t1 = self.font_bold.render("🧠 LIVE THOUGHTS", True, C_HEADER if is_active1 else C_MUTED)
+        t1 = self.font_bold.render("LIVE THOUGHTS", True, C_HEADER if is_active1 else C_MUTED)
         self.surface.blit(t1, (self.tab_flow_rect.centerx - t1.get_width() // 2, self.tab_flow_rect.centery - t1.get_height() // 2))
 
         # Tab 2: Synaptic Evolution
@@ -103,7 +104,7 @@ class BrainInspector:
         col2 = (55, 38, 22) if is_active2 else ((40, 26, 16) if is_hover2 else (26, 17, 11))
         pg.draw.rect(self.surface, col2, self.tab_syn_rect, border_radius=4)
         pg.draw.rect(self.surface, C_HEADER if is_active2 else C_BOX_BORDER, self.tab_syn_rect, 1, border_radius=4)
-        t2 = self.font_bold.render("🔬 SYNAPSE LEARNING", True, C_HEADER if is_active2 else C_MUTED)
+        t2 = self.font_bold.render("SYNAPSE LEARNING", True, C_HEADER if is_active2 else C_MUTED)
         self.surface.blit(t2, (self.tab_syn_rect.centerx - t2.get_width() // 2, self.tab_syn_rect.centery - t2.get_height() // 2))
 
     def _draw_brain_flow_view(self, worm) -> None:
@@ -124,7 +125,7 @@ class BrainInspector:
         rev_dec = m_tel.get("decision_rev", 15)
         turn_l  = m_tel.get("muscle_steer_l", 50)
         turn_r  = m_tel.get("muscle_steer_r", 50)
-        thought = m_tel.get("thought_summary", "🟢 Crawling forward -> Seeking nutrients")
+        thought = m_tel.get("thought_summary", "Crawling forward -> Seeking nutrients")
 
         y = 72
         # Stage 1: Senses
@@ -133,19 +134,19 @@ class BrainInspector:
         y += 15
 
         # Food Odor split bar
-        odor_lbl = self.font_body.render("👃 Food Odor:", True, C_TEXT)
+        odor_lbl = self.font_body.render("Food Odor:", True, C_TEXT)
         self.surface.blit(odor_lbl, (20, y))
         self._draw_split_odor_bar(110, y + 2, 175, 10, food_l, food_r)
         y += 16
 
         # Nose Whiskers (Danger Warning)
-        nose_lbl = self.font_body.render("🔴 Nose Touch:", True, C_TEXT)
+        nose_lbl = self.font_body.render("Nose Touch:", True, C_TEXT)
         self.surface.blit(nose_lbl, (20, y))
         if f_dist <= 2:
-            w_text = f"🚨 OBSTACLE {f_dist} STEP!"
+            w_text = f"OBSTACLE {f_dist} STEP!"
             w_col = C_RED
         elif f_dist <= 4:
-            w_text = f"⚠️ Wall Ahead ({f_dist})"
+            w_text = f"Wall Ahead ({f_dist})"
             w_col = C_AMBER
         else:
             w_text = "Clear Ahead"
@@ -245,7 +246,7 @@ class BrainInspector:
                 pg.draw.rect(self.surface, (38, 26, 16), row_rect, border_radius=3)
 
             # Medal / Badge
-            badge = "★1" if i == 0 else ("★2" if i == 1 else ("★3" if i == 2 else f"#{w.id:2d}"))
+            badge = "#1" if i == 0 else ("#2" if i == 1 else ("#3" if i == 2 else f"#{w.id:2d}"))
             b_col = (255, 215, 0) if i == 0 else ((200, 220, 255) if i == 1 else ((215, 140, 60) if i == 2 else C_MUTED))
 
             # Dot
@@ -257,7 +258,7 @@ class BrainInspector:
 
             b_txt = self.font_bold.render(badge, True, b_col)
             s_txt = self.font_body.render(f"[{status_str}]", True, status_col)
-            sc_txt = self.font_body.render(f"{w.score}🥚", True, C_HEADER if w.score > 0 else C_MUTED)
+            sc_txt = self.font_body.render(f"{w.score}", True, C_HEADER if w.score > 0 else C_MUTED)
             fit_txt = self.font_body.render(f"{w.fitness:.0f}", True, C_TEXT)
 
             self.surface.blit(b_txt, (20, ry))
@@ -266,8 +267,10 @@ class BrainInspector:
             self.surface.blit(fit_txt, (160, ry))
 
             if is_focused:
-                foc_marker = self.font_bold.render("◄", True, C_GREEN)
-                self.surface.blit(foc_marker, (self.W - 32, ry))
+                # Small focus marker arrow
+                mx = self.W - 24
+                pts = [(mx, ry + 2), (mx - 6, ry + 7), (mx, ry + 12)]
+                pg.draw.polygon(self.surface, C_GREEN, pts)
 
             ry += 16
 

@@ -20,6 +20,7 @@ from game.layout import (
     cell_to_px as layout_cell_to_px,
     cell_center_px as layout_cell_center_px,
 )
+from game.theme import get_font
 
 # ─── COLOR PALETTES ───────────────────────────────────────────────────────────
 SOIL_DEEP    = (14, 9, 6)       # Rich dark organic peat
@@ -32,17 +33,17 @@ SCORE_GOLD   = (255, 215, 80)
 # 10 Distinct Biological Palettes for the 10 Candidate Organisms
 WORM_PALETTES = [
     {
-        "name": "Champion 1", "badge": "★1",
+        "name": "Champion 1", "badge": "#1",
         "cuticle": (255, 175, 195), "core": (255, 235, 245), "glow": (255, 200, 220),
         "border": (255, 215, 0), "color": (255, 180, 200)
     },
     {
-        "name": "Champion 2", "badge": "★2",
+        "name": "Champion 2", "badge": "#2",
         "cuticle": (160, 190, 255), "core": (230, 240, 255), "glow": (180, 210, 255),
         "border": (210, 225, 255), "color": (160, 190, 255)
     },
     {
-        "name": "Champion 3", "badge": "★3",
+        "name": "Champion 3", "badge": "#3",
         "cuticle": (255, 190, 130), "core": (255, 240, 215), "glow": (255, 210, 150),
         "border": (215, 140, 60), "color": (255, 190, 130)
     },
@@ -99,8 +100,8 @@ class Renderer:
         self.H = (grid_size + 2 * wall_cells) * cell_size
 
         self.surface = pygame.Surface((self.W, self.H))
-        self.font = pygame.font.SysFont("monospace", 12, bold=True)
-        self.badge_font = pygame.font.SysFont("monospace", 9, bold=True)
+        self.font = get_font("body", 12)
+        self.badge_font = get_font("button", 12)
         self.frame_count = 0
 
         # Ambient floating soil spore particles inside playable field
@@ -214,7 +215,7 @@ class Renderer:
         self.floating_popups.append({
             "x": float(cx),
             "y": float(cy - 6),
-            "text": "+1 🥚",
+            "text": "+1",
             "color": (255, 235, 110),
             "alpha": 255.0,
             "vy": -1.2,

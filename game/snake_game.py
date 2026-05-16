@@ -4,9 +4,9 @@ NeuroWorm Snake — Interactive Pygame Game Loop with 10-Worm Swarm Simulation.
 Option A Implementation:
   - Direct Synaptic Weight Neuroevolution (36 biological synapses).
   - High-School-Friendly Brain Inspector panel:
-      * [🧠 LIVE THOUGHTS]: 3-stage thought stream (Senses -> Decisions -> Muscles)
+      * [THOUGHTS]: 3-stage thought stream (Senses -> Decisions -> Muscles)
         with plain-English thought summary.
-      * [🔬 SYNAPSE LEARNING]: Top biological pathways evolved, with conductance (nS)
+      * [SYNAPSES]: Top biological pathways evolved, with conductance (nS)
         and intuitive trait descriptions.
       * Live 10-Worm Swarm Roster with click-to-inspect.
   - Procedural vermiform ribbon kinematics with bioluminescent nerve pulses.
@@ -35,39 +35,9 @@ from game.layout import (
     GAME_W, GAME_H, PANEL_W, VIRTUAL_W, VIRTUAL_H,
     cell_to_px, cell_center_px
 )
+from game.theme import get_font, C_PANEL_BG, C_BORDER, C_HEADER, C_TEXT, C_MUTED, C_ACCENT
+from game.ui import Button
 CELL_SIZE  = CELL
-
-# Color Palette
-C_PANEL_BG = (18, 12, 8)
-C_BORDER   = (65, 45, 28)
-C_HEADER   = (255, 215, 90)
-C_TEXT     = (230, 215, 190)
-C_MUTED    = (150, 130, 105)
-C_BTN_BG   = (48, 30, 18)
-C_BTN_HOV  = (75, 48, 28)
-C_BTN_TXT  = (255, 225, 140)
-C_ACCENT   = (0, 230, 140)
-
-
-class Button:
-    def __init__(self, rect, text, hotkey=""):
-        self.rect = pg.Rect(rect)
-        self.text = text
-        self.hotkey = hotkey
-
-    def draw(self, surface, font, is_hovered=False):
-        col = C_BTN_HOV if is_hovered else C_BTN_BG
-        pg.draw.rect(surface, col, self.rect, border_radius=4)
-        pg.draw.rect(surface, C_BORDER, self.rect, 1, border_radius=4)
-
-        label = f"{self.text} [{self.hotkey}]" if self.hotkey else self.text
-        txt_surf = font.render(label, True, C_BTN_TXT)
-        tx = self.rect.centerx - txt_surf.get_width() // 2
-        ty = self.rect.centery - txt_surf.get_height() // 2
-        surface.blit(txt_surf, (tx, ty))
-
-    def is_clicked(self, pos):
-        return self.rect.collidepoint(pos)
 
 
 class WormAgent:
@@ -248,14 +218,14 @@ class SnakeGame:
         bx = GAME_W + 16
         w = PANEL_W - 32
         h = 24
-        self.btn_ff    = Button((bx, 480, w, h), "⏩ Fast Forward 100x", "F")
-        self.btn_next  = Button((bx, 510, w, h), "⏭ Evolve Next Gen",   "N")
-        self.btn_pause = Button((bx, 540, w, h), "⏯ Pause / Play",       "SPC")
+        self.btn_ff    = Button((bx, 480, w, h), "Fast Forward 100x", "F", icon="fast_forward")
+        self.btn_next  = Button((bx, 510, w, h), "Evolve Next Gen",   "N", icon="skip")
+        self.btn_pause = Button((bx, 540, w, h), "Pause / Play",       "SPC", icon="pause")
         btn_w2 = (w - 8) // 2
-        self.btn_spdup = Button((bx, 570, btn_w2, h), "➕ Faster", "+")
-        self.btn_spddn = Button((bx + btn_w2 + 8, 570, btn_w2, h), "➖ Slower", "-")
-        self.btn_mode  = Button((bx, 600, w, h), "👥 Swarm / Solo Mode", "M")
-        self.btn_reset = Button((bx, 630, w, h), "🔄 Reset GA Population", "R")
+        self.btn_spdup = Button((bx, 570, btn_w2, h), "Faster", "+")
+        self.btn_spddn = Button((bx + btn_w2 + 8, 570, btn_w2, h), "Slower", "-")
+        self.btn_mode  = Button((bx, 600, w, h), "Swarm / Solo", "M")
+        self.btn_reset = Button((bx, 630, w, h), "Reset GA", "R", icon="reset")
 
         self.buttons = [
             self.btn_ff, self.btn_next, self.btn_pause,
@@ -289,9 +259,9 @@ class SnakeGame:
         self.virtual_screen = pg.Surface((VIRTUAL_W, VIRTUAL_H))
         self.clock = pg.time.Clock()
 
-        self.font_title = pg.font.SysFont("monospace", 14, bold=True)
-        self.font_body  = pg.font.SysFont("monospace", 10)
-        self.font_btn   = pg.font.SysFont("monospace", 10, bold=True)
+        self.font_title = get_font("title", 14)
+        self.font_body  = get_font("body", 12)
+        self.font_btn   = get_font("button", 12)
 
         self.renderer = Renderer(cell_size=CELL_SIZE, grid_size=self.grid_size)
         return pg

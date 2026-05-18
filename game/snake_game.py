@@ -87,12 +87,14 @@ class WormAgent:
         self.net.refractory_timer[:] = 0.0
         self.net.reset_counts()
         self.circuit.apply_genome(self.genome)
+        self.prev_body: list[tuple[int, int]] = list(self.obs[2])
 
     def step(self, shared_food: tuple[int, int] = None) -> bool:
         if not self.alive:
             return False
 
         head, food, body, cur_dir = self.obs
+        self.prev_body = list(body)
         if shared_food is not None:
             food = shared_food
             self.env.food = shared_food
@@ -471,8 +473,15 @@ class SnakeGame:
     def run(self):
         pygame = self._init_pygame()
         running = True
+        last_time = time.time()
+        self.render_fps = 60
+        self.sim_accumulator = 0.0
 
         while running:
+            now = time.time()
+            frame_dt = min(0.1, max(0.001, now - last_time))
+            last_time = now
+
             screen_mouse_pos = pg.mouse.get_pos()
             virtual_mouse_pos = self._screen_to_virtual(screen_mouse_pos)
 
@@ -585,16 +594,29 @@ class SnakeGame:
                         self.gen_end_timer = 0.0
                         self.history.clear()
 
-            # ── Simulation Step (All 10 Organisms) ────────────────────
+            # ── Simulation Step Accumulator (Decoupled 60 FPS Render) ──
+            tick_dt = 1.0 / max(1, self.fps)
             if self.state == "RUNNING" and not self.paused:
-                gen_over = self.step_simulation()
-                if gen_over:
-                    self.start_generation_end()
+                self.sim_accumulator += frame_dt
+                while self.sim_accumulator >= tick_dt:
+                    for w in self.worms:
+                        if hasattr(w, "obs") and len(w.obs) > 2:
+                            w.prev_body = list(w.obs[2])
+
+                    gen_over = self.step_simulation()
+                    self.sim_accumulator -= tick_dt
+                    if gen_over:
+                        self.start_generation_end()
+                        self.sim_accumulator = 0.0
+                        break
+                interp_alpha = min(1.0, max(0.0, self.sim_accumulator / tick_dt))
             elif self.state == "GEN_END":
-                dt = 1.0 / max(1, self.fps)
-                self.gen_end_timer += dt
+                self.gen_end_timer += frame_dt
                 if self.gen_end_timer >= self.gen_end_duration:
                     self._evolve_and_next_generation()
+                interp_alpha = 1.0
+            else:
+                interp_alpha = 1.0
 
             # ── Drawing on Virtual Surface ────────────────────────────
             self.virtual_screen.fill(C_PANEL_BG)
@@ -607,6 +629,7 @@ class SnakeGame:
                 gen_info=gen_tag,
                 focused_idx=self.focused_idx,
                 solo_mode=self.solo_mode,
+                interp_alpha=interp_alpha,
             )
             self.virtual_screen.blit(game_surf, (0, 0))
 
@@ -619,7 +642,7 @@ class SnakeGame:
             # 3. Present upscaled frame to user window
             self._present_frame()
 
-            self.clock.tick(self.fps)
+            self.clock.tick(self.render_fps)
 
         pg.quit()
         sys.exit(0)

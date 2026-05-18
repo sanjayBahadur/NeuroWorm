@@ -152,6 +152,7 @@ class Renderer:
         gen_info: str = "",
         focused_idx: int = 0,
         solo_mode: bool = False,
+        interp_alpha: float = 1.0,
     ) -> pygame.Surface:
         """Render all 10 organisms simultaneously with organic procedural ribbons."""
         self.frame_count += 1
@@ -172,13 +173,13 @@ class Renderer:
             if solo_mode and i != focused_idx:
                 continue
             if w.alive and i != focused_idx:
-                self._draw_procedural_worm(w, i, is_focused=False)
+                self._draw_procedural_worm(w, i, is_focused=False, interp_alpha=interp_alpha)
 
         # 3. Draw focused organism on top
         if focused_idx < len(worms):
             fw = worms[focused_idx]
             if fw.alive:
-                self._draw_procedural_worm(fw, focused_idx, is_focused=True)
+                self._draw_procedural_worm(fw, focused_idx, is_focused=True, interp_alpha=interp_alpha)
             elif solo_mode or True:
                 self._draw_dead_worm(fw, focused_idx)
 
@@ -340,7 +341,7 @@ class Renderer:
         x_lbl = self.badge_font.render("x", True, (255, 210, 210))
         self.surface.blit(x_lbl, (hx - x_lbl.get_width() // 2, hy - x_lbl.get_height() // 2 - 1))
 
-    def _draw_procedural_worm(self, worm, w_idx: int, is_focused: bool = False) -> None:
+    def _draw_procedural_worm(self, worm, w_idx: int, is_focused: bool = False, interp_alpha: float = 1.0) -> None:
         """Renders an organic, smoothly tapering vermiform ribbon with bioluminescent nerve pulses."""
         body = worm.obs[2]
         direction = worm.direction
@@ -353,8 +354,21 @@ class Renderer:
         core_col    = pal["core"]
         glow_col    = pal["glow"]
 
-        # Center coordinates along the spine
-        pts = [self.cell_center_px(bx, by) for bx, by in body]
+        # Center coordinates along the spine with sub-pixel interpolation
+        prev_body = getattr(worm, "prev_body", None) or body
+        pts = []
+        for i in range(n):
+            bx, by = body[i]
+            if i < len(prev_body):
+                px, py = prev_body[i]
+                if abs(bx - px) <= 1 and abs(by - py) <= 1:
+                    ix = px + (bx - px) * interp_alpha
+                    iy = py + (by - py) * interp_alpha
+                else:
+                    ix, iy = bx, by
+            else:
+                ix, iy = bx, by
+            pts.append(self.cell_center_px(ix, iy))
 
         # ── 1. Continuous Tapered Ribbon Body ─────────────────────────
         # Draw from tail to head

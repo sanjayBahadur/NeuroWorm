@@ -2,10 +2,11 @@
 Procedural Vermiform Renderer for NeuroWorm Snake.
 
 High-end organic dark-biology aesthetic (inspired by Rain World, Carrion, Osmos):
-  - Procedural ribbon kinematics: Continuous articulated spine with smooth tapering
-  - Bioluminescent translucent cuticle with glowing internal nerve cord
-  - Luminous photoreceptor head eyes facing movement direction
-  - Bioluminescent bacterial nutrient spore with radiant halo and particle glow
+  - Chaikin corner-cut continuous spine with smooth tapering (no 90-degree pipe corners)
+  - Focused Hero Worm (full opacity, halo, whisker sensor rays, hunger arc, traveling pulse)
+  - Ghost swarm (35% alpha, thinner profile, minimalist numeric badge)
+  - High-contrast bacterial egg spore with 3 faint concentric scent diffusion rings
+  - Dynamic death bursts, floating cause-of-death labels, and 1.5s fading trails
   - Ambient microscopic soil depth with drifting nutrient motes
 """
 
@@ -85,6 +86,24 @@ WORM_PALETTES = [
 ]
 
 
+def chaikin_smooth(points: list[tuple[float, float]], iterations: int = 2) -> list[tuple[float, float]]:
+    """Chaikin's corner cutting algorithm for organic curve smoothing."""
+    if len(points) < 3:
+        return list(points)
+    current = list(points)
+    for _ in range(iterations):
+        smoothed = [current[0]]
+        for i in range(len(current) - 1):
+            p0 = current[i]
+            p1 = current[i + 1]
+            q = (0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1])
+            r = (0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1])
+            smoothed.extend([q, r])
+        smoothed.append(current[-1])
+        current = smoothed
+    return current
+
+
 class Renderer:
     """Renders the biological soil arena and procedural vermiform organisms."""
 
@@ -123,6 +142,7 @@ class Renderer:
         ]
         self.burst_particles = []
         self.floating_popups = []
+        self.death_events: dict[int, dict] = {}
 
     def cell_to_px(self, x: float, y: float) -> tuple[float, float]:
         """Return top-left pixel coordinates of grid cell (x, y) with outer wall band."""
@@ -132,19 +152,6 @@ class Renderer:
         """Return center pixel coordinates of grid cell (x, y) with outer wall band."""
         return (x + self.wall_cells + 0.5) * self.cell_size, (y + self.wall_cells + 0.5) * self.cell_size
 
-    def render(self, obs: tuple, score: int, game_over: bool, gen_info: str = "") -> pygame.Surface:
-        """Single-worm backward compatibility."""
-        head, food, body, direction = obs
-        dummy_worm = type("DummyWorm", (), {
-            "obs": obs,
-            "direction": direction,
-            "alive": not game_over,
-            "score": score,
-            "fitness": float(score * 300),
-            "id": 1,
-        })()
-        return self.render_multi_worms([dummy_worm], food, gen_info=gen_info, focused_idx=0, solo_mode=True)
-
     def render_multi_worms(
         self,
         worms: list,
@@ -153,51 +160,56 @@ class Renderer:
         focused_idx: int = 0,
         solo_mode: bool = False,
         interp_alpha: float = 1.0,
+        focus_mode: str = "follow",
+        dt: float = 0.016,
     ) -> pygame.Surface:
-        """Render all 10 organisms simultaneously with organic procedural ribbons."""
+        """Render all candidate organisms simultaneously with hero focus and smooth motion."""
         self.frame_count += 1
         self.surface.fill(SOIL_DEEP)
 
+        # 1. Background arena substrate & ambient motes
         self._draw_soil_arena()
         self._update_and_draw_motes()
+
+        # 2. Nutrient egg with scent diffusion rings (most luminous element)
         self._draw_nutrient_spore(food)
 
-        # 1. Draw dead organisms first (faint background trails)
-        if not solo_mode:
+        # 3. Dynamic death animations & fading trails
+        self._update_and_draw_death_events(worms, dt)
+
+        # 4. Ghost organisms (non-focused worms at ~35% alpha, thinner profile)
+        if not solo_mode and len(worms) > 1:
+            ghost_surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
             for i, w in enumerate(worms):
-                if not w.alive and i != focused_idx:
-                    self._draw_dead_worm(w, i)
+                if w.alive and i != focused_idx:
+                    self._draw_procedural_worm(
+                        w, i, is_focused=False, interp_alpha=interp_alpha, target_surf=ghost_surf
+                    )
+            ghost_surf.set_alpha(int(255 * 0.35))
+            self.surface.blit(ghost_surf, (0, 0))
 
-        # 2. Draw alive organisms (non-focused)
-        for i, w in enumerate(worms):
-            if solo_mode and i != focused_idx:
-                continue
-            if w.alive and i != focused_idx:
-                self._draw_procedural_worm(w, i, is_focused=False, interp_alpha=interp_alpha)
-
-        # 3. Draw focused organism on top
+        # 5. Focused Hero Organism on top (full opacity, halo, rays, hunger arc)
         if focused_idx < len(worms):
             fw = worms[focused_idx]
             if fw.alive:
-                self._draw_procedural_worm(fw, focused_idx, is_focused=True, interp_alpha=interp_alpha)
-            elif solo_mode or True:
-                self._draw_dead_worm(fw, focused_idx)
+                self._draw_procedural_worm(
+                    fw, focused_idx, is_focused=True, interp_alpha=interp_alpha, target_surf=self.surface
+                )
 
-        # 4. Nutrient Spore Burst Effects & Popups
+        # 6. Spore burst particles & floating popups
         self._update_and_draw_effects()
 
-        # 5. Arena HUD Bar
+        # 7. Arena HUD banner in outer wall band
         alive_count = sum(1 for w in worms if w.alive)
-        leader = max(worms, key=lambda w: (w.score, w.fitness))
-        self._draw_arena_hud(alive_count, len(worms), leader, gen_info)
+        leader = max(worms, key=lambda w: (w.score, getattr(w, "steps", 0), w.fitness))
+        self._draw_arena_hud(alive_count, len(worms), leader, gen_info, focus_mode, focused_idx)
 
         return self.surface
 
     def add_food_burst(self, grid_pos: tuple, worm_color: tuple = (255, 215, 80)) -> None:
-        """Spawn a juicy bioluminescent particle burst and floating score pop when an egg is eaten."""
+        """Spawn a bioluminescent particle burst and floating score pop when an egg is eaten."""
         cx, cy = self.cell_center_px(*grid_pos)
 
-        # 16 glowing particles expanding radially
         for i in range(16):
             angle = (i / 16.0) * 2.0 * math.pi + np.random.uniform(-0.2, 0.2)
             speed = float(np.random.uniform(1.8, 4.5))
@@ -212,7 +224,6 @@ class Renderer:
                 "decay": float(np.random.uniform(9.0, 15.0)),
             })
 
-        # Floating popup
         self.floating_popups.append({
             "x": float(cx),
             "y": float(cy - 6),
@@ -224,8 +235,7 @@ class Renderer:
         })
 
     def _update_and_draw_effects(self) -> None:
-        """Update and draw all active particle bursts and floating text popups."""
-        # 1. Spore Particles
+        """Update and draw active particle bursts and floating popups."""
         surviving_particles = []
         for p in self.burst_particles:
             p["x"] += p["vx"]
@@ -240,7 +250,6 @@ class Renderer:
                 surviving_particles.append(p)
         self.burst_particles = surviving_particles
 
-        # 2. Score Popups
         surviving_popups = []
         for pop in self.floating_popups:
             pop["y"] += pop["vy"]
@@ -254,16 +263,16 @@ class Renderer:
         self.floating_popups = surviving_popups
 
     def _draw_soil_arena(self) -> None:
-        """Draw background soil substrate with outer border wall surrounding the playable grid."""
+        """Draw soil substrate with outer border wall surrounding the playable grid."""
         cs = self.cell_size
         g = self.grid_size
         w_px = self.wall_cells * cs
 
-        # 1. Inner Playable Soil Field (0..g-1)
+        # Inner Playable Soil Field (0..g-1)
         field_rect = pygame.Rect(w_px, w_px, g * cs, g * cs)
         pygame.draw.rect(self.surface, SOIL_TILE, field_rect)
 
-        # 2. Subtle organic grid filaments inside the field
+        # Subtle organic grid filaments inside the field
         top_y = w_px
         bot_y = w_px + g * cs
         left_x = w_px
@@ -274,15 +283,13 @@ class Renderer:
             _, py = self.cell_to_px(0, i)
             pygame.draw.line(self.surface, (32, 22, 16), (left_x, py), (right_x, py), 1)
 
-        # 3. Outer border walls (strictly outside playable cells)
-        # Top & Bottom outer bands
+        # Outer border walls (strictly outside playable cells)
         pygame.draw.rect(self.surface, BORDER_STONE, (0, 0, self.W, w_px))
         pygame.draw.rect(self.surface, BORDER_STONE, (0, self.H - w_px, self.W, w_px))
-        # Left & Right outer bands
         pygame.draw.rect(self.surface, BORDER_STONE, (0, 0, w_px, self.H))
         pygame.draw.rect(self.surface, BORDER_STONE, (self.W - w_px, 0, w_px, self.H))
 
-        # 4. Border highlight line along the inner wall edge
+        # Inner wall border highlight line
         pygame.draw.rect(self.surface, BORDER_LIT, field_rect, 1)
 
     def _update_and_draw_motes(self) -> None:
@@ -306,43 +313,192 @@ class Renderer:
             self.surface.blit(m_surf, (int(m["x"]), int(m["y"])))
 
     def _draw_nutrient_spore(self, food_pos: tuple) -> None:
-        """Bioluminescent glowing bacterial egg colony."""
+        """Bioluminescent glowing bacterial egg with scent diffusion rings."""
         cx, cy = self.cell_center_px(*food_pos)
 
-        # Glowing pulsing aura
+        # 1. Three faint concentric scent diffusion rings (food smell that worms follow)
+        scent_surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+        scent_rings = [(28, 38), (52, 24), (76, 14)]
+        for r, alpha in scent_rings:
+            pygame.draw.circle(scent_surf, (255, 215, 75, alpha), (int(cx), int(cy)), r, 1)
+        self.surface.blit(scent_surf, (0, 0))
+
+        # 2. Pulsing radiant aura & ring
         pulse = 1.0 + 0.18 * math.sin(self.frame_count * 0.18)
         r_outer = int(22 * pulse)
-        aura_surf = pygame.Surface((r_outer * 2, r_outer * 2), pygame.SRCALPHA)
-        pygame.draw.circle(aura_surf, (255, 190, 60, 45), (r_outer, r_outer), r_outer)
-        pygame.draw.circle(aura_surf, (255, 215, 100, 85), (r_outer, r_outer), int(r_outer * 0.65))
-        self.surface.blit(aura_surf, (cx - r_outer, cy - r_outer))
+        aura_surf = pygame.Surface((r_outer * 2 + 4, r_outer * 2 + 4), pygame.SRCALPHA)
+        center = (r_outer + 2, r_outer + 2)
+        pygame.draw.circle(aura_surf, (255, 190, 60, 50), center, r_outer)
+        pygame.draw.circle(aura_surf, (255, 220, 80, 110), center, int(15 * pulse), 2)
+        self.surface.blit(aura_surf, (int(cx - center[0]), int(cy - center[1])))
 
-        # Core bacterial spore nucleus
-        pygame.draw.circle(self.surface, (255, 200, 70), (cx, cy), 8)
-        pygame.draw.circle(self.surface, (255, 245, 200), (cx, cy), 5)
-        pygame.draw.circle(self.surface, (255, 255, 255), (cx - 2, cy - 2), 2)
+        # 3. High-contrast core bacterial spore nucleus
+        pygame.draw.circle(self.surface, (255, 195, 50), (int(cx), int(cy)), 10)
+        pygame.draw.circle(self.surface, (255, 245, 190), (int(cx), int(cy)), 6)
+        pygame.draw.circle(self.surface, (255, 255, 255), (int(cx - 2), int(cy - 2)), 2)
 
-    def _draw_dead_worm(self, worm, w_idx: int) -> None:
-        """Faint biological ghost trail of deceased organism."""
-        body = worm.obs[2]
-        if not body:
+    def _update_and_draw_death_events(self, worms: list, dt: float) -> None:
+        """Play ~0.6s death burst, floating cause label, and fading ghost trail (1.5s)."""
+        for w in worms:
+            w_id = getattr(w, "id", None)
+            if w_id is None:
+                continue
+            if not w.alive:
+                if w_id not in self.death_events:
+                    hx, hy = w.obs[0]
+                    cause = getattr(w, "death_cause", None) or "died"
+                    cause_label = {
+                        "wall": "hit the wall",
+                        "self": "bit itself",
+                        "starved": "starved",
+                        "timeout": "time up",
+                    }.get(cause, "died")
+                    cx, cy = self.cell_center_px(hx, hy)
+                    pal = WORM_PALETTES[(w_id - 1) % len(WORM_PALETTES)]
+                    self.death_events[w_id] = {
+                        "pos": (cx, cy),
+                        "cause": cause_label,
+                        "time": 0.0,
+                        "pts": [self.cell_center_px(bx, by) for bx, by in w.obs[2]],
+                        "color": pal["cuticle"],
+                    }
+            else:
+                self.death_events.pop(w_id, None)
+
+        active_events = {}
+        death_surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+
+        for w_id, ev in self.death_events.items():
+            ev["time"] += dt
+            t = ev["time"]
+            if t >= 1.5:
+                continue
+            active_events[w_id] = ev
+
+            # Fading body trail (1.5s)
+            body_alpha = int(75.0 * max(0.0, 1.0 - t / 1.5))
+            if body_alpha > 0 and len(ev["pts"]) > 1:
+                smoothed = chaikin_smooth(ev["pts"], iterations=2)
+                for i in range(len(smoothed) - 1):
+                    p0 = (int(smoothed[i][0]), int(smoothed[i][1]))
+                    p1 = (int(smoothed[i + 1][0]), int(smoothed[i + 1][1]))
+                    pygame.draw.line(death_surf, (150, 40, 40, body_alpha), p0, p1, 5)
+                for pt in smoothed:
+                    pygame.draw.circle(death_surf, (150, 40, 40, body_alpha), (int(pt[0]), int(pt[1])), 3)
+
+            # Red burst at head for first 0.6s
+            hx, hy = ev["pos"]
+            if t < 0.6:
+                burst_frac = t / 0.6
+                burst_rad = int(5 + burst_frac * 22)
+                burst_alpha = int(240 * (1.0 - burst_frac))
+                pygame.draw.circle(death_surf, (255, 50, 50, burst_alpha), (int(hx), int(hy)), burst_rad, 2)
+                pygame.draw.circle(death_surf, (255, 90, 90, burst_alpha // 2), (int(hx), int(hy)), max(1, burst_rad // 2))
+
+            # Floating cause label (up to 1.2s)
+            if t < 1.2:
+                lbl_frac = t / 1.2
+                lbl_alpha = int(255 * (1.0 - lbl_frac))
+                lbl_y = hy - 14 - int(t * 14)
+                txt_surf = self.badge_font.render(ev["cause"], True, (255, 140, 140))
+                txt_surf.set_alpha(lbl_alpha)
+                min_px = self.wall_cells * self.cell_size
+                max_px = (self.wall_cells + self.grid_size) * self.cell_size
+                lx = int(min(max(min_px + 2, hx - txt_surf.get_width() // 2), max_px - txt_surf.get_width() - 2))
+                death_surf.blit(txt_surf, (lx, int(lbl_y)))
+
+        self.death_events = active_events
+        self.surface.blit(death_surf, (0, 0))
+
+    def _draw_whisker_rays(self, hero, hx: float, hy: float) -> None:
+        """Draw 3 sensor rays (front, left, right) from hero head to obstacles."""
+        if not hasattr(hero, "encoder") or not hasattr(hero.encoder, "telemetry"):
             return
+        telemetry = hero.encoder.telemetry
+        g = self.grid_size
+        min_px = self.wall_cells * self.cell_size
+        max_px = (self.wall_cells + g) * self.cell_size
 
-        # Faint connected ghost trail
-        pts = [self.cell_center_px(bx, by) for bx, by in body]
-        for i in range(len(pts) - 1):
-            pygame.draw.line(self.surface, (38, 25, 18), pts[i], pts[i + 1], 8)
-        for pt in pts:
-            pygame.draw.circle(self.surface, (38, 25, 18), pt, 4)
+        rays = [
+            ("front", telemetry.get("front_hit", (0, 0)), telemetry.get("front_dist", 20)),
+            ("left", telemetry.get("left_hit", (0, 0)), telemetry.get("left_dist", 20)),
+            ("right", telemetry.get("right_hit", (0, 0)), telemetry.get("right_dist", 20)),
+        ]
 
-        # Red collision mark at death location
-        hx, hy = pts[0]
-        pygame.draw.circle(self.surface, (150, 35, 35), (hx, hy), 6)
-        x_lbl = self.badge_font.render("x", True, (255, 210, 210))
-        self.surface.blit(x_lbl, (hx - x_lbl.get_width() // 2, hy - x_lbl.get_height() // 2 - 1))
+        ray_surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
 
-    def _draw_procedural_worm(self, worm, w_idx: int, is_focused: bool = False, interp_alpha: float = 1.0) -> None:
-        """Renders an organic, smoothly tapering vermiform ribbon with bioluminescent nerve pulses."""
+        for name, hit_pt, dist in rays:
+            nx, ny = hit_pt
+            is_wall = (nx < 0 or nx >= g or ny < 0 or ny >= g)
+            if nx < 0:
+                ex = float(min_px)
+                ey = float(min(max(min_px, (ny + self.wall_cells + 0.5) * self.cell_size), max_px))
+            elif nx >= g:
+                ex = float(max_px)
+                ey = float(min(max(min_px, (ny + self.wall_cells + 0.5) * self.cell_size), max_px))
+            elif ny < 0:
+                ex = float(min(max(min_px, (nx + self.wall_cells + 0.5) * self.cell_size), max_px))
+                ey = float(min_px)
+            elif ny >= g:
+                ex = float(min(max(min_px, (nx + self.wall_cells + 0.5) * self.cell_size), max_px))
+                ey = float(max_px)
+            else:
+                ex, ey = self.cell_center_px(nx, ny)
+
+            if dist <= 2:
+                col = (255, 75, 75, 210)
+                lbl_col = (255, 120, 120)
+            elif dist <= 4:
+                col = (255, 185, 55, 170)
+                lbl_col = (255, 205, 100)
+            else:
+                col = (100, 195, 230, 95)
+                lbl_col = (140, 210, 240)
+
+            pygame.draw.line(ray_surf, col, (int(hx), int(hy)), (int(ex), int(ey)), 1)
+            pygame.draw.circle(ray_surf, col, (int(ex), int(ey)), 3)
+
+            lbl_type = "wall" if is_wall else "self"
+            lbl_txt = f"{lbl_type} {dist}"
+            txt_s = self.badge_font.render(lbl_txt, True, lbl_col)
+            lx = min(max(min_px + 2, ex - txt_s.get_width() // 2), max_px - txt_s.get_width() - 2)
+            ly = min(max(min_px + 2, ey - txt_s.get_height() // 2), max_px - txt_s.get_height() - 2)
+            ray_surf.blit(txt_s, (int(lx), int(ly)))
+
+        self.surface.blit(ray_surf, (0, 0))
+
+    def _draw_hunger_arc(self, hero, hx: float, hy: float) -> None:
+        """Thin arc around hero head shrinking as starvation limit nears (red at <= 20%)."""
+        starve_limit = getattr(hero, "starve_limit", 160)
+        steps_since_food = getattr(hero, "steps_since_food", 0)
+        rem = max(0.0, 1.0 - steps_since_food / max(1, starve_limit))
+
+        if rem <= 0.20:
+            arc_col = (255, 65, 65)
+        elif rem <= 0.45:
+            arc_col = (255, 175, 50)
+        else:
+            arc_col = (65, 230, 140)
+
+        r = 16
+        rect = pygame.Rect(int(hx - r), int(hy - r), r * 2, r * 2)
+        start_angle = -math.pi / 2.0
+        end_angle = start_angle + rem * 2.0 * math.pi
+        if end_angle > start_angle + 0.05:
+            pygame.draw.arc(self.surface, arc_col, rect, start_angle, end_angle, 2)
+
+    def _draw_procedural_worm(
+        self,
+        worm,
+        w_idx: int,
+        is_focused: bool = False,
+        interp_alpha: float = 1.0,
+        target_surf: Optional[pygame.Surface] = None,
+    ) -> None:
+        """Renders an organic smoothly tapering vermiform organism with Chaikin corner smoothing."""
+        if target_surf is None:
+            target_surf = self.surface
+
         body = worm.obs[2]
         direction = worm.direction
         if not body:
@@ -354,9 +510,9 @@ class Renderer:
         core_col    = pal["core"]
         glow_col    = pal["glow"]
 
-        # Center coordinates along the spine with sub-pixel interpolation
+        # 1. Sub-pixel interpolation
         prev_body = getattr(worm, "prev_body", None) or body
-        pts = []
+        raw_pts = []
         for i in range(n):
             bx, by = body[i]
             if i < len(prev_body):
@@ -368,48 +524,61 @@ class Renderer:
                     ix, iy = bx, by
             else:
                 ix, iy = bx, by
-            pts.append(self.cell_center_px(ix, iy))
+            raw_pts.append(self.cell_center_px(ix, iy))
 
-        # ── 1. Continuous Tapered Ribbon Body ─────────────────────────
-        # Draw from tail to head
-        for i in range(n - 1, -1, -1):
-            t = i / max(1, n - 1)
-            # Head radius ~12px, tail radius ~4px
-            radius = int(12.0 * (1.0 - t * 0.65))
+        # 2. Organic Chaikin corner-cut smoothing
+        smooth_pts = chaikin_smooth(raw_pts, iterations=2)
+        num_smooth = len(smooth_pts)
 
-            pt = pts[i]
+        # 3. Tapered Ribbon Body (hero is thicker with highlight; ghost is thinner)
+        max_rad = 12.0 if is_focused else 7.0
+        min_rad = 4.0 if is_focused else 2.5
 
-            # Connect with previous point using smooth pill capsule
+        for i in range(num_smooth - 1, -1, -1):
+            t = i / max(1, num_smooth - 1)
+            radius = int(max_rad * (1.0 - t) + min_rad * t)
+            pt = (int(smooth_pts[i][0]), int(smooth_pts[i][1]))
+
             if i > 0:
-                prev_pt = pts[i - 1]
-                prev_t = (i - 1) / max(1, n - 1)
-                prev_rad = int(12.0 * (1.0 - prev_t * 0.65))
-                mid_rad = (radius + prev_rad) // 2
+                prev_t = (i - 1) / max(1, num_smooth - 1)
+                prev_rad = int(max_rad * (1.0 - prev_t) + min_rad * prev_t)
+                mid_rad = max(2, (radius + prev_rad) // 2)
+                prev_pt = (int(smooth_pts[i - 1][0]), int(smooth_pts[i - 1][1]))
 
                 # Outer cuticle
-                pygame.draw.line(self.surface, cuticle_col, prev_pt, pt, mid_rad * 2)
-                pygame.draw.circle(self.surface, cuticle_col, pt, radius)
+                pygame.draw.line(target_surf, cuticle_col, prev_pt, pt, mid_rad * 2)
+                pygame.draw.circle(target_surf, cuticle_col, pt, radius)
 
-                # Inner nerve core
-                core_rad = max(2, mid_rad - 3)
-                pygame.draw.line(self.surface, core_col, prev_pt, pt, core_rad * 2)
+                # Inner core
+                core_rad = max(1, mid_rad - (3 if is_focused else 2))
+                pygame.draw.line(target_surf, core_col, prev_pt, pt, core_rad * 2)
+
+                # Subtle highlight line for hero
+                if is_focused and mid_rad > 4:
+                    pygame.draw.line(target_surf, (255, 255, 255), prev_pt, pt, 1)
             else:
-                pygame.draw.circle(self.surface, cuticle_col, pt, radius)
-                pygame.draw.circle(self.surface, core_col, pt, max(2, radius - 3))
+                pygame.draw.circle(target_surf, cuticle_col, pt, radius)
+                pygame.draw.circle(target_surf, core_col, pt, max(1, radius - (3 if is_focused else 2)))
 
-        # ── 2. Bioluminescent Neural Pulse along Nerve Cord ───────────
-        # Pulse waves down the body spine
-        pulse_idx = int((self.frame_count * 0.4) % max(1, n))
-        if pulse_idx < len(pts):
-            p_pt = pts[pulse_idx]
-            p_surf = pygame.Surface((20, 20), pygame.SRCALPHA)
-            pygame.draw.circle(p_surf, (*glow_col, 160), (10, 10), 9)
-            pygame.draw.circle(p_surf, (255, 255, 255, 220), (10, 10), 4)
-            self.surface.blit(p_surf, (p_pt[0] - 10, p_pt[1] - 10))
+        hx, hy = smooth_pts[0]
 
-        # ── 3. Head Photoreceptor Eyes ────────────────────────────────
-        hx, hy = pts[0]
-        # Offset eye positions based on movement direction
+        # 4. Ghost organism minimal numeric label
+        if not is_focused:
+            ghost_badge = f"#{w_idx + 1}"
+            g_lbl = self.badge_font.render(ghost_badge, True, (210, 195, 180))
+            target_surf.blit(g_lbl, (int(hx - g_lbl.get_width() // 2), int(hy - 14)))
+            return
+
+        # ─── HERO-SPECIFIC OVERLAYS ──────────────────────────────────────────
+        # Traveling bioluminescent nerve pulse
+        pulse_idx = int((self.frame_count * 0.8) % num_smooth)
+        p_pt = smooth_pts[pulse_idx]
+        p_surf = pygame.Surface((20, 20), pygame.SRCALPHA)
+        pygame.draw.circle(p_surf, (*glow_col, 170), (10, 10), 9)
+        pygame.draw.circle(p_surf, (255, 255, 255, 230), (10, 10), 4)
+        target_surf.blit(p_surf, (int(p_pt[0] - 10), int(p_pt[1] - 10)))
+
+        # Head Photoreceptor Eyes
         eye_offsets = {
             "RIGHT": ((5, -4), (5, 4)),
             "LEFT":  ((-5, -4), (-5, 4)),
@@ -418,37 +587,48 @@ class Renderer:
         }.get(direction, ((4, -4), (4, 4)))
 
         for ox, oy in eye_offsets:
-            eye_cx = hx + ox
-            eye_cy = hy + oy
-            # Dark iris
-            pygame.draw.circle(self.surface, (25, 12, 18), (eye_cx, eye_cy), 3)
-            # Luminous glint
-            pygame.draw.circle(self.surface, (255, 255, 255), (eye_cx + (1 if ox > 0 else -1), eye_cy - 1), 1)
+            eye_cx = int(hx + ox)
+            eye_cy = int(hy + oy)
+            pygame.draw.circle(target_surf, (25, 12, 18), (eye_cx, eye_cy), 3)
+            pygame.draw.circle(target_surf, (255, 255, 255), (eye_cx + (1 if ox > 0 else -1), eye_cy - 1), 1)
 
-        # ── 4. Focused Target Halo ────────────────────────────────────
-        if is_focused:
-            halo_r = 18 + int(3.0 * math.sin(self.frame_count * 0.25))
-            h_surf = pygame.Surface((halo_r * 2, halo_r * 2), pygame.SRCALPHA)
-            pygame.draw.circle(h_surf, (255, 220, 80, 110), (halo_r, halo_r), halo_r, 2)
-            self.surface.blit(h_surf, (hx - halo_r, hy - halo_r))
+        # Focused Halo
+        halo_r = 18 + int(3.0 * math.sin(self.frame_count * 0.25))
+        h_surf = pygame.Surface((halo_r * 2 + 2, halo_r * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(h_surf, (255, 220, 80, 120), (halo_r + 1, halo_r + 1), halo_r, 2)
+        target_surf.blit(h_surf, (int(hx - halo_r - 1), int(hy - halo_r - 1)))
 
-        # ── 5. Sleek Identification Badge ─────────────────────────────
-        badge_str = pal["badge"]
+        # Hunger Arc
+        self._draw_hunger_arc(worm, hx, hy)
+
+        # Whisker Sensor Rays
+        self._draw_whisker_rays(worm, hx, hy)
+
+        # Hero Badge
+        badge_str = f"#{w_idx + 1} HERO"
         b_txt = self.badge_font.render(badge_str, True, (14, 8, 5))
-        bw = b_txt.get_width() + 6
+        bw = b_txt.get_width() + 8
         bh = b_txt.get_height() + 2
-        bx = hx - bw // 2
-        by = hy - 18
+        bx = int(hx - bw // 2)
+        by = int(hy - 24)
 
         b_rect = pygame.Rect(bx, by, bw, bh)
-        pygame.draw.rect(self.surface, pal["border"], b_rect, border_radius=3)
-        self.surface.blit(b_txt, (bx + 3, by + 1))
+        pygame.draw.rect(target_surf, pal["border"], b_rect, border_radius=3)
+        target_surf.blit(b_txt, (bx + 4, by + 1))
 
-    def _draw_arena_hud(self, alive_count: int, total_count: int, leader, gen_info: str) -> None:
+    def _draw_arena_hud(
+        self,
+        alive_count: int,
+        total_count: int,
+        leader,
+        gen_info: str,
+        focus_mode: str = "follow",
+        focused_idx: int = 0,
+    ) -> None:
         """Sleek semi-transparent HUD banner drawn strictly within the top outer wall band."""
         w_px = self.wall_cells * self.cell_size
         hud_bg = pygame.Surface((self.W, w_px), pygame.SRCALPHA)
-        hud_bg.fill((12, 8, 5, 210))
+        hud_bg.fill((12, 8, 5, 225))
         self.surface.blit(hud_bg, (0, 0))
 
         ty = max(2, (w_px - self.font.get_height()) // 2)
@@ -458,11 +638,14 @@ class Renderer:
         pop_lbl = self.font.render(f"WORMS: {alive_count}/{total_count} ALIVE", True, pop_col)
         self.surface.blit(pop_lbl, (12, ty))
 
-        # Center: Generation tag
-        if gen_info:
-            g_lbl = self.font.render(gen_info, True, TEXT_CREAM)
-            self.surface.blit(g_lbl, (self.W // 2 - g_lbl.get_width() // 2, ty))
+        # Center: Generation tag + focus mode indicator
+        mode_tag = "[FOLLOW LEADER]" if focus_mode == "follow" else f"[MANUAL #{focused_idx + 1}]"
+        mid_str = f"{gen_info}  {mode_tag}".strip()
+        g_lbl = self.font.render(mid_str, True, TEXT_CREAM)
+        self.surface.blit(g_lbl, (self.W // 2 - g_lbl.get_width() // 2, ty))
 
         # Right: Champion score
-        champ_lbl = self.font.render(f"LEADER: #{leader.id} ({leader.score} EGGS)", True, SCORE_GOLD)
+        leader_id = getattr(leader, "id", 1)
+        leader_score = getattr(leader, "score", 0)
+        champ_lbl = self.font.render(f"LEADER: #{leader_id} ({leader_score} EGGS)", True, SCORE_GOLD)
         self.surface.blit(champ_lbl, (self.W - champ_lbl.get_width() - 12, ty))

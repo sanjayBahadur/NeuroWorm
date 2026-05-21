@@ -184,6 +184,7 @@ class SnakeGame:
             for i in range(10)
         ]
         self.focused_idx = 0
+        self.focus_mode = "follow"
         self.generation_steps = 0
         self.state: str = "RUNNING"
         self.gen_end_timer: float = 0.0
@@ -530,19 +531,25 @@ class SnakeGame:
                         self.state = "RUNNING"
                         self.gen_end_timer = 0.0
                         self.history.clear()
+                    elif event.key == pg.K_l:
+                        self.focus_mode = "manual" if self.focus_mode == "follow" else "follow"
                     elif event.key in (pg.K_1, pg.K_2, pg.K_3, pg.K_4, pg.K_5, pg.K_6, pg.K_7, pg.K_8, pg.K_9):
+                        self.focus_mode = "manual"
                         self.focused_idx = event.key - pg.K_1
                     elif event.key == pg.K_0:
+                        self.focus_mode = "manual"
                         self.focused_idx = 9
                     elif event.key == pg.K_LEFT:
                         if self.human_mode:
                             self.human_dir = "LEFT"
                         else:
+                            self.focus_mode = "manual"
                             self.focused_idx = (self.focused_idx - 1) % len(self.worms)
                     elif event.key == pg.K_RIGHT:
                         if self.human_mode:
                             self.human_dir = "RIGHT"
                         else:
+                            self.focus_mode = "manual"
                             self.focused_idx = (self.focused_idx + 1) % len(self.worms)
                     elif event.key == pg.K_UP and self.human_mode:
                         self.human_dir = "UP"
@@ -552,6 +559,17 @@ class SnakeGame:
                 elif event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
                     px = virtual_mouse_pos[0] - GAME_W
                     py = virtual_mouse_pos[1]
+
+                    # Arena click selection
+                    if virtual_mouse_pos[0] < GAME_W:
+                        mx, my = virtual_mouse_pos
+                        for idx, w in enumerate(self.worms):
+                            if w.alive and hasattr(w, "obs") and len(w.obs) > 2:
+                                hx, hy = self.renderer.cell_center_px(*w.obs[0])
+                                if (mx - hx) ** 2 + (my - hy) ** 2 <= 24 ** 2:
+                                    self.focus_mode = "manual"
+                                    self.focused_idx = idx
+                                    break
 
                     # Panel interaction
                     if virtual_mouse_pos[0] >= GAME_W:
@@ -565,6 +583,7 @@ class SnakeGame:
                         for i in range(len(self.worms)):
                             row_rect = pg.Rect(16, 286 + i * 16 - 1, PANEL_W - 32, 16)
                             if row_rect.collidepoint((px, py)):
+                                self.focus_mode = "manual"
                                 self.focused_idx = i
                                 break
 
@@ -593,6 +612,12 @@ class SnakeGame:
                         self.state = "RUNNING"
                         self.gen_end_timer = 0.0
                         self.history.clear()
+
+            # ── Follow-Leader Dynamic Focus Tracking ──────────────────
+            if self.focus_mode == "follow":
+                alive = [w for w in self.worms if w.alive]
+                best_w = max(alive, key=lambda w: (w.score, getattr(w, "steps", 0), w.fitness)) if alive else max(self.worms, key=lambda w: (w.score, getattr(w, "steps", 0), w.fitness))
+                self.focused_idx = best_w.id - 1
 
             # ── Simulation Step Accumulator (Decoupled 60 FPS Render) ──
             tick_dt = 1.0 / max(1, self.fps)
@@ -630,6 +655,8 @@ class SnakeGame:
                 focused_idx=self.focused_idx,
                 solo_mode=self.solo_mode,
                 interp_alpha=interp_alpha,
+                focus_mode=self.focus_mode,
+                dt=frame_dt,
             )
             self.virtual_screen.blit(game_surf, (0, 0))
 

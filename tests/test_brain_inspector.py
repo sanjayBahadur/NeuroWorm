@@ -62,3 +62,44 @@ def test_brain_inspector_render_synapses(pygame_dummy):
 
     assert surf.get_width() == 320
     assert surf.get_height() == 640
+
+
+def test_leaderboard_row_click_hit_rects(pygame_dummy):
+    """Verify leaderboard row rects allow accurate click detection without magic numbers."""
+    inspector = BrainInspector()
+    worms = [
+        WormAgent(worm_id=i + 1, genome=DEFAULT_GENOME, color=WORM_PALETTES[i]["color"], grid_size=10, seed=42)
+        for i in range(10)
+    ]
+    # Render to populate hit rects
+    inspector.render(worm=worms[0], all_worms=worms, generation=1)
+
+    assert len(inspector.leaderboard_hit_rects) >= 5
+
+    # Click first row
+    first_rect, first_idx = inspector.leaderboard_hit_rects[0]
+    clicked = inspector.get_clicked_worm_idx(first_rect.center)
+    assert clicked == first_idx
+
+
+def test_learning_curve_empty_and_populated(pygame_dummy):
+    """Verify learning curve card handles empty history and populated history cleanly."""
+    inspector = BrainInspector()
+    worms = [
+        WormAgent(worm_id=i + 1, genome=DEFAULT_GENOME, color=WORM_PALETTES[i]["color"], grid_size=10, seed=42)
+        for i in range(10)
+    ]
+
+    # Empty history
+    surf_empty = inspector.render(worm=worms[0], all_worms=worms, generation=1, history=[])
+    assert isinstance(surf_empty, pg.Surface)
+
+    # Populated history
+    history = [
+        {"gen": 1, "best_score": 1, "avg_score": 0.2, "best_fitness": 350.0},
+        {"gen": 2, "best_score": 3, "avg_score": 1.1, "best_fitness": 920.0},
+        {"gen": 3, "best_score": 4, "avg_score": 1.8, "best_fitness": 1250.0},
+    ]
+    surf_pop = inspector.render(worm=worms[0], all_worms=worms, generation=3, history=history)
+    assert isinstance(surf_pop, pg.Surface)
+

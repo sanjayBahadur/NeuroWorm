@@ -33,9 +33,10 @@ from viz.brain_inspector import BrainInspector
 from game.layout import (
     GRID_SIZE, CELL, WALL, FIELD_PX, ARENA_PX,
     GAME_W, GAME_H, PANEL_W, VIRTUAL_W, VIRTUAL_H,
+    CARD_X, CARD_W, CONTROLS_Y, CONTROLS_H,
     cell_to_px, cell_center_px
 )
-from game.theme import get_font, C_PANEL_BG, C_BORDER, C_HEADER, C_TEXT, C_MUTED, C_ACCENT
+from game.theme import get_font, C_PANEL_BG, C_CARD_BG, C_BORDER, C_HEADER, C_TEXT, C_MUTED, C_ACCENT
 from game.ui import Button
 CELL_SIZE  = CELL
 
@@ -196,6 +197,7 @@ class SnakeGame:
             w.env.food = self.shared_food
             w.obs = (w.obs[0], self.shared_food, w.obs[2], w.obs[3])
 
+        self.show_help: bool = False
         self.inspector = BrainInspector(width=PANEL_W, height=VIRTUAL_H)
         self.renderer = Renderer(cell_size=CELL_SIZE, grid_size=self.grid_size)
         self.buttons = []
@@ -218,21 +220,28 @@ class SnakeGame:
         return (self.grid_size // 2, self.grid_size // 2)
 
     def _init_ui_buttons(self):
-        bx = GAME_W + 16
-        w = PANEL_W - 32
+        bx = GAME_W + CARD_X
+        w = CARD_W
+        w4 = (w - 18) // 4
         h = 24
-        self.btn_ff    = Button((bx, 480, w, h), "Fast Forward 100x", "F", icon="fast_forward")
-        self.btn_next  = Button((bx, 510, w, h), "Evolve Next Gen",   "N", icon="skip")
-        self.btn_pause = Button((bx, 540, w, h), "Pause / Play",       "SPC", icon="pause")
-        btn_w2 = (w - 8) // 2
-        self.btn_spdup = Button((bx, 570, btn_w2, h), "Faster", "+")
-        self.btn_spddn = Button((bx + btn_w2 + 8, 570, btn_w2, h), "Slower", "-")
-        self.btn_mode  = Button((bx, 600, w, h), "Swarm / Solo", "M")
-        self.btn_reset = Button((bx, 630, w, h), "Reset GA", "R", icon="reset")
+        y1 = CONTROLS_Y + 8
+        self.btn_pause = Button((bx, y1, w4, h), "Pause", "SPC", icon="pause")
+        self.btn_spddn = Button((bx + w4 + 6, y1, w4, h), "Slower", "-")
+        self.btn_spdup = Button((bx + 2 * (w4 + 6), y1, w4, h), "Faster", "+")
+        self.btn_next  = Button((bx + 3 * (w4 + 6), y1, w4, h), "Next", "N", icon="skip")
+
+        w3 = (w - 12) // 3
+        y2 = y1 + 30
+        self.btn_ff    = Button((bx, y2, w3, h), "FF x100", "F", icon="fast_forward")
+        self.btn_mode  = Button((bx + w3 + 6, y2, w3, h), "Solo/Swarm", "M")
+        self.btn_reset = Button((bx + 2 * (w3 + 6), y2, w3, h), "Reset", "R", icon="reset")
+
+        y3 = y2 + 30
+        self.btn_help  = Button((bx, y3, w, 22), "Help & Shortcuts Overlay", "?")
 
         self.buttons = [
-            self.btn_ff, self.btn_next, self.btn_pause,
-            self.btn_spdup, self.btn_spddn, self.btn_mode, self.btn_reset
+            self.btn_pause, self.btn_spddn, self.btn_spdup, self.btn_next,
+            self.btn_ff, self.btn_mode, self.btn_reset, self.btn_help,
         ]
 
     def _init_pygame(self):
@@ -533,6 +542,8 @@ class SnakeGame:
                         self.history.clear()
                     elif event.key == pg.K_l:
                         self.focus_mode = "manual" if self.focus_mode == "follow" else "follow"
+                    elif event.key in (pg.K_SLASH, pg.K_QUESTION):
+                        self.show_help = not self.show_help
                     elif event.key in (pg.K_1, pg.K_2, pg.K_3, pg.K_4, pg.K_5, pg.K_6, pg.K_7, pg.K_8, pg.K_9):
                         self.focus_mode = "manual"
                         self.focused_idx = event.key - pg.K_1
@@ -557,6 +568,10 @@ class SnakeGame:
                         self.human_dir = "DOWN"
 
                 elif event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
+                    if self.show_help:
+                        self.show_help = False
+                        continue
+
                     px = virtual_mouse_pos[0] - GAME_W
                     py = virtual_mouse_pos[1]
 
@@ -579,16 +594,16 @@ class SnakeGame:
                         elif self.inspector.tab_syn_rect.collidepoint((px, py)):
                             self.inspector_tab = "synapses"
 
-                        # Roster row clicks
-                        for i in range(len(self.worms)):
-                            row_rect = pg.Rect(16, 286 + i * 16 - 1, PANEL_W - 32, 16)
-                            if row_rect.collidepoint((px, py)):
-                                self.focus_mode = "manual"
-                                self.focused_idx = i
-                                break
+                        # Leaderboard row clicks (derived directly from layout hit rects)
+                        clicked_idx = self.inspector.get_clicked_worm_idx((px, py))
+                        if clicked_idx is not None:
+                            self.focus_mode = "manual"
+                            self.focused_idx = clicked_idx
 
                     # Button clicks
-                    if self.btn_ff.is_clicked(virtual_mouse_pos):
+                    if self.btn_help.is_clicked(virtual_mouse_pos):
+                        self.show_help = not self.show_help
+                    elif self.btn_ff.is_clicked(virtual_mouse_pos):
                         self.trigger_fast_forward(100)
                     elif self.btn_next.is_clicked(virtual_mouse_pos):
                         self._evolve_and_next_generation()
@@ -663,7 +678,7 @@ class SnakeGame:
             if self.state == "GEN_END":
                 self._draw_gen_end_banner()
 
-            # 2. Right: Interactive Brain Inspector Dashboard
+            # 2. Right: Interactive Brain Inspector Dashboard (3 Cards + Controls)
             self._draw_dashboard(virtual_mouse_pos)
 
             # 3. Present upscaled frame to user window
@@ -686,15 +701,63 @@ class SnakeGame:
             view_mode=self.inspector_tab,
             mouse_pos=(px, py),
             solo_mode=self.solo_mode,
+            history=self.history,
+            focus_mode=self.focus_mode,
         )
         self.virtual_screen.blit(inspector_surf, (GAME_W, 0))
+
+        # Controls Card Background
+        ctrl_rect = pg.Rect(GAME_W + CARD_X, CONTROLS_Y, CARD_W, CONTROLS_H)
+        pg.draw.rect(self.virtual_screen, C_CARD_BG, ctrl_rect, border_radius=6)
+        pg.draw.rect(self.virtual_screen, C_BORDER, ctrl_rect, 1, border_radius=6)
 
         # Interactive Buttons
         for btn in self.buttons:
             btn.draw(self.virtual_screen, self.font_btn, is_hovered=btn.rect.collidepoint(virtual_mouse_pos))
 
-        # Footer hints
-        hint1 = self.font_body.render("1-0/Click: Inspect | TAB: View Mode", True, C_MUTED)
-        hint2 = self.font_body.render("M: Swarm/Solo | F11: Fullscreen | SPC", True, C_MUTED)
-        self.virtual_screen.blit(hint1, (GAME_W + 16, 665))
-        self.virtual_screen.blit(hint2, (GAME_W + 16, 680))
+        # Help overlay if active
+        if self.show_help:
+            self._draw_help_overlay()
+
+    def _draw_help_overlay(self):
+        """Draw semi-transparent help & shortcuts modal overlay."""
+        overlay = pg.Surface((VIRTUAL_W, VIRTUAL_H), pg.SRCALPHA)
+        overlay.fill((10, 6, 4, 215))
+        self.virtual_screen.blit(overlay, (0, 0))
+
+        box_w = 480
+        box_h = 360
+        bx = (VIRTUAL_W - box_w) // 2
+        by = (VIRTUAL_H - box_h) // 2
+        box_rect = pg.Rect(bx, by, box_w, box_h)
+
+        pg.draw.rect(self.virtual_screen, (28, 18, 12), box_rect, border_radius=8)
+        pg.draw.rect(self.virtual_screen, C_HEADER, box_rect, 2, border_radius=8)
+
+        title = self.font_title.render("NEUROWORM CONTROLS & SHORTCUTS", True, C_HEADER)
+        self.virtual_screen.blit(title, (bx + box_w // 2 - title.get_width() // 2, by + 16))
+
+        shortcuts = [
+            ("SPACE", "Play / Pause simulation"),
+            ("- / +", "Speed down / up (4 to 60 ticks/s)"),
+            ("N", "Advance to next generation"),
+            ("F", "Fast-forward 100 generations off-screen"),
+            ("L", "Toggle Follow-Leader vs Manual focus"),
+            ("M", "Toggle Swarm vs Solo hero view"),
+            ("1 - 0", "Directly inspect candidate worm 1 to 10"),
+            ("ARROWS", "Cycle inspected organism"),
+            ("TAB", "Switch Thoughts / Synapse Learning tab"),
+            ("R", "Reset simulation & genetic population"),
+            ("?", "Toggle this shortcuts guide"),
+        ]
+
+        sy = by + 52
+        for key, desc in shortcuts:
+            k_txt = self.font_btn.render(f"[{key}]", True, C_ACCENT)
+            d_txt = self.font_body.render(desc, True, C_TEXT)
+            self.virtual_screen.blit(k_txt, (bx + 24, sy))
+            self.virtual_screen.blit(d_txt, (bx + 115, sy))
+            sy += 24
+
+        footer = self.font_body.render("Press ? or click anywhere to close", True, C_MUTED)
+        self.virtual_screen.blit(footer, (bx + box_w // 2 - footer.get_width() // 2, by + box_h - 26))

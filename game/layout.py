@@ -26,6 +26,18 @@ PANEL_W: int = 360                            # 360 px
 VIRTUAL_W: int = GAME_W + PANEL_W             # 1064 px
 VIRTUAL_H: int = ARENA_H                      # 704 px
 
+# Right-hand Panel 3-Card Layout Constants
+CARD_X: int = 12
+CARD_W: int = PANEL_W - 24                    # 336 px
+CARD1_Y: int = 10                             # Selected worm card
+CARD1_H: int = 196
+CARD2_Y: int = 214                            # Leaderboard card
+CARD2_H: int = 168
+CARD3_Y: int = 390                            # Is it learning? card
+CARD3_H: int = 188
+CONTROLS_Y: int = 586                         # Controls area
+CONTROLS_H: int = 108
+
 
 def cell_to_px(x: float, y: float, cell_size: int = CELL, wall_cells: int = WALL) -> tuple[float, float]:
     """

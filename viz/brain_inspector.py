@@ -1,46 +1,38 @@
 """
-High-School-Friendly Brain Activity & Synaptic Evolution Inspector.
+High-School-Friendly Brain Activity, Leaderboard, & Learning Curve Inspector.
 
-Replaces confusing raw matrices with an intuitive, beautifully formatted
-application panel that anyone with minimum high-school knowledge can read instantly:
-  1. Brain Flow View (Live Thinking):
-     - Stage 1: Senses (Food Odor L/R, Nose Touch Warning, Side Whiskers)
-     - Stage 2: Decisions (Forward Crawl Drive vs Emergency Reversal Reflex)
-     - Stage 3: Muscles (Steer Left vs Steer Right)
-     - Plain-English Thought Balloon: e.g. "Smells food on Left -> Steering toward egg!"
-  2. Synapses View (Genetic Evolution):
-     - Human-readable cards showing what evolution just strengthened/weakened
-       (e.g., "Nose Touch -> Reversal Reflex: +68% stronger across generations")
-  3. Live 10-Worm Population Roster with click-to-inspect
+Structured into 3 distinct cards driven by game.layout constants:
+  1. Selected Worm: Live Senses -> Decides -> Moves + Thought summary (or Synapse learning)
+  2. Leaderboard: Top 5 organisms (+ selected worm if outside top 5) with status and cause
+  3. Is It Learning?: Line chart of historical best and average scores across generations
 """
 
-from typing import List, Dict, Any, Optional
+import math
+from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 import pygame as pg
-from simulation.synaptic_circuit import SYNAPSE_DEFINITIONS
-from game.layout import PANEL_W, VIRTUAL_H
-from game.theme import get_font
 
-PANEL_H = VIRTUAL_H
+from game.layout import (
+    PANEL_W, VIRTUAL_H,
+    CARD_X, CARD_W,
+    CARD1_Y, CARD1_H,
+    CARD2_Y, CARD2_H,
+    CARD3_Y, CARD3_H,
+)
+from game.theme import (
+    get_font, C_PANEL_BG, C_CARD_BG, C_CARD_HOVER, C_BORDER,
+    C_HEADER, C_TEXT, C_MUTED, C_ACCENT, C_DANGER, C_STARVE,
+    C_EGG_GOLD
+)
 
-# Colors
-C_PANEL_BG  = (18, 12, 8)
-C_BOX_BG    = (28, 18, 12)
-C_BOX_BORDER= (60, 42, 28)
-C_HEADER    = (255, 215, 90)
-C_TEXT      = (230, 215, 190)
-C_MUTED     = (150, 130, 105)
-C_GREEN     = (0, 230, 140)
-C_RED       = (255, 75, 75)
-C_AMBER     = (255, 190, 50)
-C_CYAN      = (80, 210, 240)
-C_BAR_BG    = (45, 30, 20)
+C_BAR_BG = (42, 28, 18)
+C_CYAN   = (80, 210, 240)
 
 
 class BrainInspector:
-    """Renders the friendly, educational neuroscience laboratory panel."""
+    """Renders the educational 3-card telemetry and learning inspector panel."""
 
-    def __init__(self, width: int = PANEL_W, height: int = PANEL_H):
+    def __init__(self, width: int = PANEL_W, height: int = VIRTUAL_H):
         if not pg.font.get_init():
             pg.font.init()
         self.W = width
@@ -49,10 +41,22 @@ class BrainInspector:
         self.font_title = get_font("title", 14)
         self.font_bold  = get_font("card_title", 13)
         self.font_body  = get_font("body", 12)
-        self.font_quote = get_font("small", 12)
+        self.font_small = get_font("small", 12)
 
-        self.tab_flow_rect = pg.Rect(12, 38, (self.W - 32) // 2, 24)
-        self.tab_syn_rect  = pg.Rect(16 + (self.W - 32) // 2, 38, (self.W - 32) // 2, 24)
+        # Tab button rects inside Card 1
+        tab_w = (CARD_W - 20) // 2
+        self.tab_flow_rect = pg.Rect(CARD_X + 8, CARD1_Y + 8, tab_w, 24)
+        self.tab_syn_rect  = pg.Rect(CARD_X + 12 + tab_w, CARD1_Y + 8, tab_w, 24)
+
+        # Hit testing for leaderboard rows
+        self.leaderboard_hit_rects: list[tuple[pg.Rect, int]] = []
+
+    def get_clicked_worm_idx(self, mouse_pos: tuple[int, int]) -> Optional[int]:
+        """Derive clicked worm index directly from leaderboard row rects."""
+        for rect, worm_idx in self.leaderboard_hit_rects:
+            if rect.collidepoint(mouse_pos):
+                return worm_idx
+        return None
 
     def render(
         self,
@@ -62,57 +66,68 @@ class BrainInspector:
         view_mode: str = "flow",   # "flow" or "synapses"
         mouse_pos: tuple = (0, 0),
         solo_mode: bool = False,
+        history: Optional[list[dict]] = None,
+        focus_mode: str = "follow",
     ) -> pg.Surface:
         self.surface.fill(C_PANEL_BG)
-        pg.draw.line(self.surface, C_BOX_BORDER, (0, 0), (0, self.H), 2)
+        pg.draw.line(self.surface, C_BORDER, (0, 0), (0, self.H), 1)
 
-        # ── 1. Top Application Header ─────────────────────────────────
-        app_title = self.font_title.render("NEUROWORM LAB", True, C_HEADER)
-        self.surface.blit(app_title, (14, 10))
+        # ── 1. Card 1: Selected Worm ──────────────────────────────────
+        self._draw_card_selected_worm(worm, view_mode, mouse_pos)
 
-        champ_tag = "CHAMPION 1" if worm.id == 1 else ("CHAMPION 2" if worm.id == 2 else ("CHAMPION 3" if worm.id == 3 else f"WORM #{worm.id}"))
-        sub_txt = self.font_body.render(f"Inspecting: {champ_tag}", True, getattr(worm, "color", C_TEXT))
-        self.surface.blit(sub_txt, (14, 25))
+        # ── 2. Card 2: Leaderboard (Top 5) ────────────────────────────
+        self._draw_card_leaderboard(all_worms, focused_id=worm.id, mouse_pos=mouse_pos, generation=generation)
 
-        # ── 2. Navigation Tabs (Brain Flow vs Synapses) ────────────────
-        self._draw_tabs(view_mode, mouse_pos)
-
-        # ── 3. Main View Area (y: 66 to 258) ──────────────────────────
-        if view_mode == "flow":
-            self._draw_brain_flow_view(worm)
-        else:
-            self._draw_synapses_view(worm)
-
-        # ── 4. 10-Worm Swarm Roster (y: 264 to 452) ───────────────────
-        self._draw_roster(all_worms, focused_id=worm.id, mouse_pos=mouse_pos, generation=generation)
+        # ── 3. Card 3: Is It Learning? (Learning Curve) ───────────────
+        self._draw_card_learning_curve(history or [], generation)
 
         return self.surface
 
-    def _draw_tabs(self, active_mode: str, mouse_pos: tuple) -> None:
-        # Tab 1: Brain Flow
+    def _draw_card_selected_worm(self, worm, view_mode: str, mouse_pos: tuple) -> None:
+        """Card 1: Selected Worm live sensory telemetry or synaptic circuit."""
+        card_rect = pg.Rect(CARD_X, CARD1_Y, CARD_W, CARD1_H)
+        pg.draw.rect(self.surface, C_CARD_BG, card_rect, border_radius=6)
+        pg.draw.rect(self.surface, C_BORDER, card_rect, 1, border_radius=6)
+
+        # Tabs at top of Card 1
         is_hover1 = self.tab_flow_rect.collidepoint(mouse_pos)
-        is_active1 = (active_mode == "flow")
-        col1 = (55, 38, 22) if is_active1 else ((40, 26, 16) if is_hover1 else (26, 17, 11))
+        is_active1 = (view_mode == "flow")
+        col1 = (52, 36, 22) if is_active1 else ((38, 26, 16) if is_hover1 else (26, 17, 11))
         pg.draw.rect(self.surface, col1, self.tab_flow_rect, border_radius=4)
-        pg.draw.rect(self.surface, C_HEADER if is_active1 else C_BOX_BORDER, self.tab_flow_rect, 1, border_radius=4)
+        pg.draw.rect(self.surface, C_HEADER if is_active1 else C_BORDER, self.tab_flow_rect, 1, border_radius=4)
         t1 = self.font_bold.render("LIVE THOUGHTS", True, C_HEADER if is_active1 else C_MUTED)
         self.surface.blit(t1, (self.tab_flow_rect.centerx - t1.get_width() // 2, self.tab_flow_rect.centery - t1.get_height() // 2))
 
-        # Tab 2: Synaptic Evolution
         is_hover2 = self.tab_syn_rect.collidepoint(mouse_pos)
-        is_active2 = (active_mode == "synapses")
-        col2 = (55, 38, 22) if is_active2 else ((40, 26, 16) if is_hover2 else (26, 17, 11))
+        is_active2 = (view_mode == "synapses")
+        col2 = (52, 36, 22) if is_active2 else ((38, 26, 16) if is_hover2 else (26, 17, 11))
         pg.draw.rect(self.surface, col2, self.tab_syn_rect, border_radius=4)
-        pg.draw.rect(self.surface, C_HEADER if is_active2 else C_BOX_BORDER, self.tab_syn_rect, 1, border_radius=4)
+        pg.draw.rect(self.surface, C_HEADER if is_active2 else C_BORDER, self.tab_syn_rect, 1, border_radius=4)
         t2 = self.font_bold.render("SYNAPSE LEARNING", True, C_HEADER if is_active2 else C_MUTED)
         self.surface.blit(t2, (self.tab_syn_rect.centerx - t2.get_width() // 2, self.tab_syn_rect.centery - t2.get_height() // 2))
 
-    def _draw_brain_flow_view(self, worm) -> None:
-        """High-School-Friendly 3-stage live decision stream."""
-        box = pg.Rect(12, 66, self.W - 24, 192)
-        pg.draw.rect(self.surface, C_BOX_BG, box, border_radius=5)
-        pg.draw.rect(self.surface, C_BOX_BORDER, box, 1, border_radius=5)
+        # Selected worm quick stats
+        y = CARD1_Y + 36
+        starve_limit = getattr(worm, "starve_limit", 160)
+        steps_food = getattr(worm, "steps_since_food", 0)
+        rem_hunger = max(0, int(100.0 * (1.0 - steps_food / max(1, starve_limit))))
 
+        name_str = f"#{worm.id} HERO" if worm.id == 1 else f"#{worm.id} Candidate"
+        n_lbl = self.font_bold.render(name_str, True, getattr(worm, "color", C_TEXT))
+        self.surface.blit(n_lbl, (CARD_X + 10, y))
+
+        stats_str = f"{worm.score} eggs · {worm.steps} stp · {rem_hunger}% hunger"
+        s_lbl = self.font_small.render(stats_str, True, C_MUTED)
+        self.surface.blit(s_lbl, (CARD_X + CARD_W - s_lbl.get_width() - 10, y + 1))
+        y += 18
+
+        if view_mode == "flow":
+            self._render_flow_strip(worm, y)
+        else:
+            self._render_synapses_strip(worm, y)
+
+    def _render_flow_strip(self, worm, start_y: int) -> None:
+        """Draw 3-step strip: Senses -> Decides -> Moves + Thought Balloon."""
         s_tel = getattr(worm.encoder, "telemetry", {})
         m_tel = getattr(worm.decoder, "telemetry", {})
 
@@ -125,154 +140,229 @@ class BrainInspector:
         rev_dec = m_tel.get("decision_rev", 15)
         turn_l  = m_tel.get("muscle_steer_l", 50)
         turn_r  = m_tel.get("muscle_steer_r", 50)
-        thought = m_tel.get("thought_summary", "Crawling forward -> Seeking nutrients")
+        thought = m_tel.get("thought_summary", "Crawling forward — seeking food smell")
 
-        y = 72
-        # Stage 1: Senses
-        s_title = self.font_bold.render("1. WHAT SENSES FEEL:", True, C_HEADER)
-        self.surface.blit(s_title, (18, y))
-        y += 15
+        y = start_y
+        # 1. Senses
+        s_title = self.font_small.render("1. Senses: Smell & Touch", True, C_HEADER)
+        self.surface.blit(s_title, (CARD_X + 10, y))
+        y += 14
 
-        # Food Odor split bar
-        odor_lbl = self.font_body.render("Food Odor:", True, C_TEXT)
-        self.surface.blit(odor_lbl, (20, y))
-        self._draw_split_odor_bar(110, y + 2, 175, 10, food_l, food_r)
+        self.surface.blit(self.font_small.render("Odor L/R:", True, C_TEXT), (CARD_X + 12, y))
+        self._draw_split_odor_bar(CARD_X + 80, y + 2, 110, 8, food_l, food_r)
+
+        touch_text = f"Nose: {f_dist} stp" if f_dist <= 3 else "Nose: clear"
+        touch_col = C_DANGER if f_dist <= 2 else (C_STARVE if f_dist <= 4 else C_ACCENT)
+        self.surface.blit(self.font_small.render(touch_text, True, touch_col), (CARD_X + 200, y))
         y += 16
 
-        # Nose Whiskers (Danger Warning)
-        nose_lbl = self.font_body.render("Nose Touch:", True, C_TEXT)
-        self.surface.blit(nose_lbl, (20, y))
-        if f_dist <= 2:
-            w_text = f"OBSTACLE {f_dist} STEP!"
-            w_col = C_RED
-        elif f_dist <= 4:
-            w_text = f"Wall Ahead ({f_dist})"
-            w_col = C_AMBER
-        else:
-            w_text = "Clear Ahead"
-            w_col = C_GREEN
-        self._draw_progress_bar(110, y + 2, 110, 10, nose, color=C_RED if f_dist <= 2 else C_AMBER)
-        w_surf = self.font_bold.render(w_text, True, w_col)
-        self.surface.blit(w_surf, (226, y - 1))
-        y += 18
+        # 2. Decides
+        d_title = self.font_small.render("2. Decides: Forward vs Turn", True, C_HEADER)
+        self.surface.blit(d_title, (CARD_X + 10, y))
+        y += 14
 
-        # Stage 2: Decisions
-        d_title = self.font_bold.render("2. WHAT BRAIN DECIDES:", True, C_HEADER)
-        self.surface.blit(d_title, (18, y))
-        y += 15
+        self.surface.blit(self.font_small.render("Crawl:", True, C_TEXT), (CARD_X + 12, y))
+        self._draw_progress_bar(CARD_X + 58, y + 2, 85, 7, fwd_dec, color=C_ACCENT)
+        self.surface.blit(self.font_small.render("Turn:", True, C_TEXT), (CARD_X + 155, y))
+        self._draw_progress_bar(CARD_X + 195, y + 2, 85, 7, rev_dec, color=C_DANGER)
+        y += 16
 
-        self.surface.blit(self.font_body.render("Forward Drive:", True, C_TEXT), (20, y))
-        self._draw_progress_bar(110, y + 2, 75, 9, fwd_dec, color=C_GREEN)
-        self.surface.blit(self.font_body.render("Reversal:", True, C_TEXT), (195, y))
-        self._draw_progress_bar(250, y + 2, 45, 9, rev_dec, color=C_RED)
-        y += 17
+        # 3. Moves
+        m_title = self.font_small.render("3. Moves: Steering Muscles", True, C_HEADER)
+        self.surface.blit(m_title, (CARD_X + 10, y))
+        y += 14
 
-        # Stage 3: Muscles
-        m_title = self.font_bold.render("3. WHAT MUSCLES MOVE:", True, C_HEADER)
-        self.surface.blit(m_title, (18, y))
-        y += 15
-
-        self.surface.blit(self.font_body.render("Left Turn:", True, C_TEXT), (20, y))
-        self._draw_progress_bar(110, y + 2, 75, 9, turn_l, color=C_CYAN)
-        self.surface.blit(self.font_body.render("Right Turn:", True, C_TEXT), (195, y))
-        self._draw_progress_bar(250, y + 2, 45, 9, turn_r, color=C_CYAN)
-        y += 18
+        self.surface.blit(self.font_small.render("Steer L:", True, C_TEXT), (CARD_X + 12, y))
+        self._draw_progress_bar(CARD_X + 66, y + 2, 75, 7, turn_l, color=C_CYAN)
+        self.surface.blit(self.font_small.render("Steer R:", True, C_TEXT), (CARD_X + 155, y))
+        self._draw_progress_bar(CARD_X + 215, y + 2, 75, 7, turn_r, color=C_CYAN)
+        y += 16
 
         # Thought Balloon
-        t_box = pg.Rect(18, y, self.W - 36, 20)
-        pg.draw.rect(self.surface, (36, 24, 16), t_box, border_radius=4)
-        pg.draw.rect(self.surface, (70, 50, 32), t_box, 1, border_radius=4)
-        th_surf = self.font_quote.render(thought, True, C_HEADER)
+        t_box = pg.Rect(CARD_X + 10, y, CARD_W - 20, 20)
+        pg.draw.rect(self.surface, (34, 23, 15), t_box, border_radius=4)
+        pg.draw.rect(self.surface, C_BORDER, t_box, 1, border_radius=4)
+        th_surf = self.font_small.render(thought, True, C_HEADER)
         self.surface.blit(th_surf, (t_box.centerx - th_surf.get_width() // 2, t_box.centery - th_surf.get_height() // 2))
 
-    def _draw_synapses_view(self, worm) -> None:
-        """High-School-Friendly view of what biological synapses evolution has altered."""
-        box = pg.Rect(12, 66, self.W - 24, 192)
-        pg.draw.rect(self.surface, C_BOX_BG, box, border_radius=5)
-        pg.draw.rect(self.surface, C_BOX_BORDER, box, 1, border_radius=5)
-
-        title = self.font_bold.render("TOP EVOLVED BRAIN PATHWAYS:", True, C_HEADER)
-        self.surface.blit(title, (18, 72))
-
-        # Show 4 most critical learned biological circuits
+    def _render_synapses_strip(self, worm, start_y: int) -> None:
+        """Card 1 secondary tab: top evolved biological synapses."""
         traits = [
-            ("Nose Touch -> Reversal Reflex", "AVM -> AVA", "Wall Avoidance", float(worm.genome[10])),
-            ("Food Odor -> Turn Muscle",      "ASE -> AIB", "Food Tracking",  float(worm.genome[2])),
-            ("Nose Touch -> Stop Forward",     "AVM -| AVB", "Braking Reflex", float(worm.genome[12])),
-            ("Side Whisker -> Turn Away",      "ASH -> SMD", "Coil Avoidance", float(worm.genome[14])),
+            ("Nose Touch -> Turn", "AVM -> AVA", float(worm.genome[10])),
+            ("Food Odor -> Turn",  "ASE -> AIB", float(worm.genome[2])),
+            ("Nose Touch -> Brake", "AVM -| AVB", float(worm.genome[12])),
+            ("Side Whisk -> Steer", "ASH -> SMD", float(worm.genome[14])),
         ]
+        y = start_y + 2
+        for name, pathway, weight in traits:
+            n_txt = self.font_small.render(f"{name} ({pathway})", True, C_TEXT)
+            self.surface.blit(n_txt, (CARD_X + 12, y))
 
-        y = 92
-        for name, pathway, role, weight in traits:
-            # Trait title
-            n_txt = self.font_bold.render(name, True, C_TEXT)
-            self.surface.blit(n_txt, (20, y))
-
-            # Pathway label & weight
             w_str = f"{weight:+.1f} nS"
-            w_col = C_GREEN if weight > 0 else C_RED
-            p_txt = self.font_body.render(f"({pathway})", True, C_MUTED)
-            w_txt = self.font_bold.render(w_str, True, w_col)
-            self.surface.blit(p_txt, (185, y))
-            self.surface.blit(w_txt, (self.W - w_txt.get_width() - 22, y))
-            y += 14
+            w_col = C_ACCENT if weight > 0 else C_DANGER
+            w_txt = self.font_small.render(w_str, True, w_col)
+            self.surface.blit(w_txt, (CARD_X + CARD_W - w_txt.get_width() - 14, y))
+            y += 15
 
-            # Strength meter (-20 to +25)
             norm = int(np.clip(((weight + 20.0) / 45.0) * 100, 0, 100))
-            self._draw_progress_bar(20, y, self.W - 40, 6, norm, color=C_CYAN if weight > 0 else (220, 100, 100))
-            y += 12
+            self._draw_progress_bar(CARD_X + 12, y, CARD_W - 24, 6, norm, color=C_CYAN if weight > 0 else (220, 90, 90))
+            y += 13
 
-        hint = self.font_quote.render("Values reflect physical biological conductance (nS)", True, C_MUTED)
-        self.surface.blit(hint, (20, y + 2))
+        hint = self.font_small.render("Conductance (nS) evolved via genetic selection", True, C_MUTED)
+        self.surface.blit(hint, (CARD_X + 12, y + 2))
 
-    def _draw_roster(self, all_worms: list, focused_id: int, mouse_pos: tuple, generation: int) -> None:
-        """Live 10-worm swarm leaderboard with click selection."""
-        r_box = pg.Rect(12, 264, self.W - 24, 180)
-        pg.draw.rect(self.surface, C_BOX_BG, r_box, border_radius=5)
-        pg.draw.rect(self.surface, C_BOX_BORDER, r_box, 1, border_radius=5)
+    def _draw_card_leaderboard(self, all_worms: list, focused_id: int, mouse_pos: tuple, generation: int) -> None:
+        """Card 2: Top 5 leaderboard (+ selected worm if outside top 5) with status icons."""
+        card_rect = pg.Rect(CARD_X, CARD2_Y, CARD_W, CARD2_H)
+        pg.draw.rect(self.surface, C_CARD_BG, card_rect, border_radius=6)
+        pg.draw.rect(self.surface, C_BORDER, card_rect, 1, border_radius=6)
 
-        r_hdr = self.font_bold.render(f"POPULATION (GEN #{generation} - TOP 3 KEPT):", True, C_HEADER)
-        self.surface.blit(r_hdr, (18, 270))
+        hdr_txt = self.font_bold.render(f"LEADERBOARD (GEN #{generation})", True, C_HEADER)
+        self.surface.blit(hdr_txt, (CARD_X + 10, CARD2_Y + 8))
 
-        ry = 286
-        for i, w in enumerate(all_worms):
-            row_rect = pg.Rect(16, ry - 1, self.W - 32, 15)
-            is_hover = row_rect.collidepoint(mouse_pos)
+        # Sort all worms by (score, steps, fitness) descending
+        sorted_worms = sorted(all_worms, key=lambda w: (w.score, getattr(w, "steps", 0), w.fitness), reverse=True)
+        top_5 = sorted_worms[:5]
+
+        # Check if focused worm is outside top 5
+        focused_worm = next((w for w in all_worms if w.id == focused_id), None)
+        display_list = list(top_5)
+        if focused_worm and focused_worm not in top_5:
+            display_list.append(focused_worm)
+
+        self.leaderboard_hit_rects = []
+        ry = CARD2_Y + 28
+
+        for rank_idx, w in enumerate(display_list):
+            row_rect = pg.Rect(CARD_X + 6, ry - 1, CARD_W - 12, 19)
+            self.leaderboard_hit_rects.append((row_rect, w.id - 1))
+
             is_focused = (w.id == focused_id)
+            is_hover = row_rect.collidepoint(mouse_pos)
 
             if is_focused:
-                pg.draw.rect(self.surface, (54, 36, 22), row_rect, border_radius=3)
+                pg.draw.rect(self.surface, C_CARD_HOVER, row_rect, border_radius=4)
+                pg.draw.rect(self.surface, (120, 85, 55), row_rect, 1, border_radius=4)
             elif is_hover:
-                pg.draw.rect(self.surface, (38, 26, 16), row_rect, border_radius=3)
+                pg.draw.rect(self.surface, (36, 24, 16), row_rect, border_radius=4)
 
-            # Medal / Badge
-            badge = "#1" if i == 0 else ("#2" if i == 1 else ("#3" if i == 2 else f"#{w.id:2d}"))
-            b_col = (255, 215, 0) if i == 0 else ((200, 220, 255) if i == 1 else ((215, 140, 60) if i == 2 else C_MUTED))
+            # Rank badge
+            rank_str = f"#{rank_idx + 1}" if rank_idx < 5 else "#sel"
+            rank_col = C_EGG_GOLD if rank_idx == 0 else (C_HEADER if rank_idx < 3 else C_MUTED)
+            self.surface.blit(self.font_small.render(rank_str, True, rank_col), (CARD_X + 10, ry + 1))
 
-            # Dot
-            pg.draw.circle(self.surface, getattr(w, "color", C_TEXT), (45, ry + 6), 3)
+            # Color chip
+            chip_col = getattr(w, "color", C_TEXT)
+            pg.draw.circle(self.surface, chip_col, (CARD_X + 44, ry + 8), 4)
 
-            # Status
-            status_str = "ALV" if w.alive else "RIP"
-            status_col = C_GREEN if w.alive else (160, 80, 80)
+            # Worm Name
+            w_name = f"Worm #{w.id}"
+            self.surface.blit(self.font_small.render(w_name, True, C_TEXT), (CARD_X + 54, ry + 1))
 
-            b_txt = self.font_bold.render(badge, True, b_col)
-            s_txt = self.font_body.render(f"[{status_str}]", True, status_col)
-            sc_txt = self.font_body.render(f"{w.score}", True, C_HEADER if w.score > 0 else C_MUTED)
-            fit_txt = self.font_body.render(f"{w.fitness:.0f}", True, C_TEXT)
+            # Score
+            sc_str = f"{w.score} eggs"
+            sc_col = C_EGG_GOLD if w.score > 0 else C_MUTED
+            self.surface.blit(self.font_small.render(sc_str, True, sc_col), (CARD_X + 145, ry + 1))
 
-            self.surface.blit(b_txt, (20, ry))
-            self.surface.blit(s_txt, (54, ry))
-            self.surface.blit(sc_txt, (100, ry))
-            self.surface.blit(fit_txt, (160, ry))
+            # Status with cause
+            if w.alive:
+                st_icon = "alive"
+                st_txt = "alive"
+                st_col = C_ACCENT
+            else:
+                cause = getattr(w, "death_cause", None) or "died"
+                cause_map = {"wall": "x wall", "self": "x self", "starved": "x hungry", "timeout": "x time"}
+                st_icon = "x"
+                st_txt = cause_map.get(cause, "x died")
+                st_col = C_DANGER
 
-            if is_focused:
-                # Small focus marker arrow
-                mx = self.W - 24
-                pts = [(mx, ry + 2), (mx - 6, ry + 7), (mx, ry + 12)]
-                pg.draw.polygon(self.surface, C_GREEN, pts)
+            s_surf = self.font_small.render(st_txt, True, st_col)
+            self.surface.blit(s_surf, (CARD_X + CARD_W - s_surf.get_width() - 12, ry + 1))
 
-            ry += 16
+            ry += 22
+
+    def _draw_card_learning_curve(self, history: list[dict], generation: int) -> None:
+        """Card 3: Sparkline / line chart of historical best and average eggs per generation."""
+        card_rect = pg.Rect(CARD_X, CARD3_Y, CARD_W, CARD3_H)
+        pg.draw.rect(self.surface, C_CARD_BG, card_rect, border_radius=6)
+        pg.draw.rect(self.surface, C_BORDER, card_rect, 1, border_radius=6)
+
+        hdr_txt = self.font_bold.render("IS IT LEARNING?", True, C_HEADER)
+        self.surface.blit(hdr_txt, (CARD_X + 10, CARD3_Y + 8))
+
+        # Metrics subtitle
+        if history:
+            last = history[-1]
+            sub_str = f"Gen {last['gen']} · Best: {last['best_score']} eggs · Avg: {last['avg_score']:.1f}"
+        else:
+            sub_str = f"Gen {generation} · Best: 0 eggs · Avg: 0.0"
+        self.surface.blit(self.font_small.render(sub_str, True, C_MUTED), (CARD_X + 10, CARD3_Y + 24))
+
+        # Plot boundary
+        px = CARD_X + 36
+        py = CARD3_Y + 44
+        pw = CARD_W - 48
+        ph = CARD3_H - 64
+        plot_rect = pg.Rect(px, py, pw, ph)
+        pg.draw.rect(self.surface, (22, 15, 10), plot_rect, border_radius=4)
+        pg.draw.rect(self.surface, C_BORDER, plot_rect, 1, border_radius=4)
+
+        if not history:
+            empty_txt = self.font_small.render("Press N or F to evolve a generation.", True, C_MUTED)
+            self.surface.blit(empty_txt, (plot_rect.centerx - empty_txt.get_width() // 2, plot_rect.centery - empty_txt.get_height() // 2))
+            return
+
+        # Show last 30 generations
+        data = history[-30:]
+        n_pts = len(data)
+
+        max_val = max(1, max(int(d.get("best_score", 0)) for d in data))
+        # Ensure y-axis ceiling has headroom
+        y_ceil = max(5, int(math.ceil(max_val * 1.2)))
+
+        # Y-axis labels & dashed gridlines
+        y_ticks = [0, y_ceil // 2, y_ceil]
+        for val in y_ticks:
+            y_pos = py + ph - int((val / y_ceil) * ph)
+            lbl = self.font_small.render(str(val), True, C_MUTED)
+            self.surface.blit(lbl, (px - lbl.get_width() - 4, y_pos - lbl.get_height() // 2))
+            if val > 0:
+                pg.draw.line(self.surface, (40, 28, 18), (px, y_pos), (px + pw, y_pos), 1)
+
+        # X-axis generation labels
+        g_start = data[0].get("gen", 1)
+        g_end = data[-1].get("gen", 1)
+        lbl_s = self.font_small.render(f"G{g_start}", True, C_MUTED)
+        lbl_e = self.font_small.render(f"G{g_end}", True, C_MUTED)
+        self.surface.blit(lbl_s, (px, py + ph + 2))
+        self.surface.blit(lbl_e, (px + pw - lbl_e.get_width(), py + ph + 2))
+
+        # Legend at top right
+        leg_b = self.font_small.render("Best", True, C_HEADER)
+        leg_a = self.font_small.render("Avg", True, C_CYAN)
+        lx = px + pw - leg_b.get_width() - leg_a.get_width() - 16
+        self.surface.blit(leg_b, (lx, py + 4))
+        self.surface.blit(leg_a, (lx + leg_b.get_width() + 8, py + 4))
+
+        # Plot lines
+        best_pts = []
+        avg_pts = []
+        for i, pt in enumerate(data):
+            cx = px + int((i / max(1, n_pts - 1)) * pw) if n_pts > 1 else px + pw // 2
+            b_val = pt.get("best_score", 0)
+            a_val = pt.get("avg_score", 0.0)
+            by = py + ph - int((b_val / y_ceil) * ph)
+            ay = py + ph - int((a_val / y_ceil) * ph)
+            best_pts.append((cx, by))
+            avg_pts.append((cx, ay))
+
+        if len(best_pts) > 1:
+            pg.draw.lines(self.surface, C_HEADER, False, best_pts, 2)
+            pg.draw.lines(self.surface, C_CYAN, False, avg_pts, 2)
+        for pt in best_pts:
+            pg.draw.circle(self.surface, C_HEADER, pt, 3)
+        for pt in avg_pts:
+            pg.draw.circle(self.surface, C_CYAN, pt, 2)
 
     def _draw_progress_bar(self, x: int, y: int, w: int, h: int, pct: int, color: tuple) -> None:
         bg_rect = pg.Rect(x, y, w, h)
@@ -286,14 +376,12 @@ class BrainInspector:
         bg_rect = pg.Rect(x, y, w, h)
         pg.draw.rect(self.surface, C_BAR_BG, bg_rect, border_radius=2)
         mid_x = x + w // 2
-        pg.draw.line(self.surface, (80, 55, 40), (mid_x, y), (mid_x, y + h), 1)
+        pg.draw.line(self.surface, (70, 48, 32), (mid_x, y), (mid_x, y + h), 1)
 
-        # Left fill
         if l_pct > 0:
             fill_l = int((w // 2) * (np.clip(l_pct, 0, 100) / 100.0))
-            pg.draw.rect(self.surface, C_GREEN, (mid_x - fill_l, y, fill_l, h), border_radius=2)
+            pg.draw.rect(self.surface, C_ACCENT, (mid_x - fill_l, y, fill_l, h), border_radius=2)
 
-        # Right fill
         if r_pct > 0:
             fill_r = int((w // 2) * (np.clip(r_pct, 0, 100) / 100.0))
-            pg.draw.rect(self.surface, C_GREEN, (mid_x, y, fill_r, h), border_radius=2)
+            pg.draw.rect(self.surface, C_ACCENT, (mid_x, y, fill_r, h), border_radius=2)

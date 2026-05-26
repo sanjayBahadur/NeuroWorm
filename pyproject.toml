@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov", "black", "ruff"]
+dev = ["pytest>=8.0", "pytest-cov", "black", "ruff", "pillow"]
 
 [tool.ruff]
 line-length = 100

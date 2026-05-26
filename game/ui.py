@@ -131,25 +131,32 @@ class Button:
         border_col = (140, 105, 75) if is_hovered else C_BORDER
         pg.draw.rect(surface, border_col, self.rect, 1, border_radius=4)
 
-        x_cursor = self.rect.x + 8
         cy = self.rect.centery
-
-        # Optional vector icon
-        if self.icon:
-            icon_s = 12
-            draw_icon(surface, self.icon, x_cursor, cy - icon_s // 2, size=icon_s, color=C_BTN_TXT)
-            x_cursor += icon_s + 6
-
-        # Text label
+        icon_s = 12 if self.icon else 0
         txt_surf = font.render(self.text, True, C_BTN_TXT)
-        ty = cy - txt_surf.get_height() // 2
-        surface.blit(txt_surf, (x_cursor, ty))
+        key_surf = font.render(f"[{self.hotkey}]", True, C_MUTED) if self.hotkey else None
 
-        # Hotkey badge on right
-        if self.hotkey:
-            key_txt = font.render(f"[{self.hotkey}]", True, C_MUTED)
-            kx = self.rect.right - key_txt.get_width() - 8
-            surface.blit(key_txt, (kx, cy - key_txt.get_height() // 2))
+        needed_w = (icon_s + 6 if self.icon else 0) + txt_surf.get_width() + (key_surf.get_width() + 6 if key_surf else 0)
+
+        if needed_w + 12 > self.rect.width:
+            # Compact mode: fit gracefully without overlapping
+            if self.icon and key_surf:
+                tot_w = icon_s + 4 + key_surf.get_width()
+                sx = self.rect.centerx - tot_w // 2
+                draw_icon(surface, self.icon, sx, cy - icon_s // 2, size=icon_s, color=C_BTN_TXT)
+                surface.blit(key_surf, (sx + icon_s + 4, cy - key_surf.get_height() // 2))
+            else:
+                surface.blit(txt_surf, (self.rect.centerx - txt_surf.get_width() // 2, cy - txt_surf.get_height() // 2))
+        else:
+            # Spacious mode: icon + text on left, hotkey on right
+            x_cursor = self.rect.x + 8
+            if self.icon:
+                draw_icon(surface, self.icon, x_cursor, cy - icon_s // 2, size=icon_s, color=C_BTN_TXT)
+                x_cursor += icon_s + 6
+            surface.blit(txt_surf, (x_cursor, cy - txt_surf.get_height() // 2))
+            if key_surf:
+                kx = self.rect.right - key_surf.get_width() - 8
+                surface.blit(key_surf, (kx, cy - key_surf.get_height() // 2))
 
     def is_clicked(self, pos: tuple[int, int]) -> bool:
         return self.rect.collidepoint(pos)

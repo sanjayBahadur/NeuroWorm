@@ -89,7 +89,7 @@ class MotorDecoder:
             else:
                 next_dir = left_dir if hl_r >= hr_r else right_dir
 
-            thought = "🚨 Wall Alert! Emergency Avoidance Turn"
+            thought = "Wall Alert! Emergency Avoidance Turn"
             self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, next_dir, thought)
             return next_dir
 
@@ -101,11 +101,11 @@ class MotorDecoder:
 
             ratio = (left_drive + 1e-4) / (abs(left_drive) + abs(right_drive) + 2e-4)
             if ratio > self.turn_thresh:
-                thought = "👃 Food Scent on Left -> Steering Left"
+                thought = "Food Scent on Left — Steering Left"
                 self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, left_dir, thought)
                 return left_dir
             if (1.0 - ratio) > self.turn_thresh:
-                thought = "👃 Food Scent on Right -> Steering Right"
+                thought = "Food Scent on Right — Steering Right"
                 self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, right_dir, thought)
                 return right_dir
 
@@ -114,16 +114,16 @@ class MotorDecoder:
         if total_dv > 1e-4:
             d_ratio = db_r / total_dv
             if d_ratio > self.dv_thresh and current_direction != "DOWN":
-                thought = "⬆️ Dorsal Wave Active -> Steering UP"
+                thought = "Dorsal Wave Active — Steering UP"
                 self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, "UP", thought)
                 return "UP"
             elif (1.0 - d_ratio) > self.dv_thresh and current_direction != "UP":
-                thought = "⬇️ Ventral Wave Active -> Steering DOWN"
+                thought = "Ventral Wave Active — Steering DOWN"
                 self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, "DOWN", thought)
                 return "DOWN"
 
         # ── 4. Default: Forward Crawling ──────────────────────────────
-        thought = "🟢 Forward Crawl -> Tracking Bacterial Trail"
+        thought = "Forward Crawl — Tracking Bacterial Trail"
         self._record_telemetry(fwd_r, rev_r, hl_r, hr_r, current_direction, thought)
         return current_direction
 

@@ -387,22 +387,39 @@ class Renderer:
                 for pt in smoothed:
                     pygame.draw.circle(death_surf, (150, 40, 40, body_alpha), (int(pt[0]), int(pt[1])), 3)
 
-            # Red burst at head for first 0.6s
+            # Head burst for first 0.6s (red impact for collision, amber depletion for starvation, soft blue for timeout)
             hx, hy = ev["pos"]
             if t < 0.6:
                 burst_frac = t / 0.6
                 burst_rad = int(5 + burst_frac * 22)
                 burst_alpha = int(240 * (1.0 - burst_frac))
-                pygame.draw.circle(death_surf, (255, 50, 50, burst_alpha), (int(hx), int(hy)), burst_rad, 2)
-                pygame.draw.circle(death_surf, (255, 90, 90, burst_alpha // 2), (int(hx), int(hy)), max(1, burst_rad // 2))
+                cause_type = ev.get("cause", "")
+                if cause_type == "starved":
+                    b_outer = (235, 175, 50)
+                    b_inner = (255, 220, 100)
+                elif cause_type == "time up":
+                    b_outer = (120, 170, 220)
+                    b_inner = (180, 210, 255)
+                else:
+                    b_outer = (255, 50, 50)
+                    b_inner = (255, 90, 90)
+                pygame.draw.circle(death_surf, (*b_outer, burst_alpha), (int(hx), int(hy)), burst_rad, 2)
+                pygame.draw.circle(death_surf, (*b_inner, burst_alpha // 2), (int(hx), int(hy)), max(1, burst_rad // 2))
 
-            # Floating cause label (up to 1.2s) with clear worm identifier
+            # Floating cause label (up to 1.2s) with clear worm identifier and cause-coded color
             if t < 1.2:
                 lbl_frac = t / 1.2
                 lbl_alpha = int(255 * (1.0 - lbl_frac))
                 lbl_y = hy - 14 - int(t * 14)
                 lbl_text = f"#{w_id} {ev['cause']}"
-                txt_surf = self.badge_font.render(lbl_text, True, (255, 140, 140))
+                cause_type = ev.get("cause", "")
+                if cause_type == "starved":
+                    txt_color = (255, 205, 110)
+                elif cause_type == "time up":
+                    txt_color = (160, 200, 240)
+                else:
+                    txt_color = (255, 140, 140)
+                txt_surf = self.badge_font.render(lbl_text, True, txt_color)
                 txt_surf.set_alpha(lbl_alpha)
                 min_px = self.wall_cells * self.cell_size
                 max_px = (self.wall_cells + self.grid_size) * self.cell_size

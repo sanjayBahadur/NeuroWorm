@@ -41,6 +41,6 @@ runs/
 .DS_Store
 Thumbs.db
 
-# Jupyter checkpoints
-.ipynb_checkpoints/
-notebooks/.ipynb_checkpoints/
+# Agent plans
+.plan*.md
+

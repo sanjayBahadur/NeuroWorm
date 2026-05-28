@@ -309,6 +309,8 @@ class SnakeGame:
         self.generation_steps = 0
         self.state = "RUNNING"
         self.gen_end_timer = 0.0
+        if hasattr(self, "renderer") and self.renderer is not None:
+            self.renderer.death_events.clear()
 
         # Record GA fast-forward result into history (A5)
         self.history.append({
@@ -418,6 +420,8 @@ class SnakeGame:
         self.generation_steps = 0
         self.state = "RUNNING"
         self.gen_end_timer = 0.0
+        if hasattr(self, "renderer") and self.renderer is not None:
+            self.renderer.death_events.clear()
 
     def _present_frame(self):
         if not hasattr(self, "screen") or self.screen is None or not hasattr(self, "virtual_screen") or self.virtual_screen is None:
@@ -539,6 +543,8 @@ class SnakeGame:
                         self.generation_steps = 0
                         self.state = "RUNNING"
                         self.gen_end_timer = 0.0
+                        if hasattr(self, "renderer") and self.renderer is not None:
+                            self.renderer.death_events.clear()
                         self.history.clear()
                     elif event.key == pg.K_l:
                         self.focus_mode = "manual" if self.focus_mode == "follow" else "follow"
@@ -626,6 +632,8 @@ class SnakeGame:
                         self.generation_steps = 0
                         self.state = "RUNNING"
                         self.gen_end_timer = 0.0
+                        if hasattr(self, "renderer") and self.renderer is not None:
+                            self.renderer.death_events.clear()
                         self.history.clear()
 
             # ── Follow-Leader Dynamic Focus Tracking ──────────────────

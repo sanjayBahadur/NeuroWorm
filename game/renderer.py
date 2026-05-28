@@ -177,7 +177,7 @@ class Renderer:
         # 3. Dynamic death animations & fading trails
         self._update_and_draw_death_events(worms, dt)
 
-        # 4. Ghost organisms (non-focused worms at ~35% alpha, thinner profile)
+        # 4. Ghost organisms (non-focused worms at ~50% alpha, thinner profile)
         if not solo_mode and len(worms) > 1:
             ghost_surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
             for i, w in enumerate(worms):
@@ -185,7 +185,7 @@ class Renderer:
                     self._draw_procedural_worm(
                         w, i, is_focused=False, interp_alpha=interp_alpha, target_surf=ghost_surf
                     )
-            ghost_surf.set_alpha(int(255 * 0.35))
+            ghost_surf.set_alpha(int(255 * 0.50))
             self.surface.blit(ghost_surf, (0, 0))
 
         # 5. Focused Hero Organism on top (full opacity, halo, rays, hunger arc)
@@ -371,9 +371,10 @@ class Renderer:
         for w_id, ev in self.death_events.items():
             ev["time"] += dt
             t = ev["time"]
+            # Always retain event in active_events so it doesn't re-trigger while worm remains dead
+            active_events[w_id] = ev
             if t >= 1.5:
                 continue
-            active_events[w_id] = ev
 
             # Fading body trail (1.5s)
             body_alpha = int(75.0 * max(0.0, 1.0 - t / 1.5))
@@ -395,12 +396,13 @@ class Renderer:
                 pygame.draw.circle(death_surf, (255, 50, 50, burst_alpha), (int(hx), int(hy)), burst_rad, 2)
                 pygame.draw.circle(death_surf, (255, 90, 90, burst_alpha // 2), (int(hx), int(hy)), max(1, burst_rad // 2))
 
-            # Floating cause label (up to 1.2s)
+            # Floating cause label (up to 1.2s) with clear worm identifier
             if t < 1.2:
                 lbl_frac = t / 1.2
                 lbl_alpha = int(255 * (1.0 - lbl_frac))
                 lbl_y = hy - 14 - int(t * 14)
-                txt_surf = self.badge_font.render(ev["cause"], True, (255, 140, 140))
+                lbl_text = f"#{w_id} {ev['cause']}"
+                txt_surf = self.badge_font.render(lbl_text, True, (255, 140, 140))
                 txt_surf.set_alpha(lbl_alpha)
                 min_px = self.wall_cells * self.cell_size
                 max_px = (self.wall_cells + self.grid_size) * self.cell_size

@@ -78,12 +78,24 @@ For complete technical details, see [docs/how-it-works.md](docs/how-it-works.md)
 
 ### Interactive Controls
 
-- `F`: Toggle 100x Fast-Forward off-screen neuroevolution
-- `N`: Manually evolve the next generation
-- `Space`: Pause / resume simulation
-- `M`: Toggle 10-worm swarm roster vs solo champion view
-- `F11`: Toggle fullscreen
-- `+` / `-`: Increase or decrease playback speed
+| Key | Action | Description |
+| :--- | :--- | :--- |
+| `Space` | Pause / Play | Freeze simulation and interpolation |
+| `+` / `-` | Speed | Increase or decrease simulation tick rate (4–60 ticks/s) |
+| `N` | Next Generation | Advance instantly to next neuroevolution generation |
+| `F` | Fast-Forward | Toggle 100x headless simulation acceleration |
+| `M` | Solo / Swarm | Switch between 10-worm swarm view and solo hero view |
+| `L` | Follow Leader | Restore camera focus to current highest-scoring worm |
+| `1`–`9`, `0` | Select Worm | Manually inspect candidate worms #1 through #10 |
+| `R` | Reset GA | Reinitialize population and restart from Generation 1 |
+| `?` | Help | Toggle on-screen keyboard shortcuts overlay |
+| `F11` | Fullscreen | Toggle fullscreen display mode |
+
+### What the Learning Curve Shows (and What It Doesn't)
+
+The live dashboard features an **"Is It Learning?"** chart displaying the generation's highest egg score (yellow) and average swarm score (cyan) across generations:
+- **What it shows:** The evolutionary algorithm quickly prunes catastrophic mutations (such as turning into adjacent walls), steadily lifting average swarm survival and stabilizing mean egg intake around 2–3 eggs.
+- **What it does not show:** An exponential or unbounded climb. Because the biological connectome lacks learned inhibitory mechanisms and memory, the genetic algorithm hits an honest structural ceiling, preventing the worm from rivaling global pathfinding heuristics.
 
 ## Limitations
 
@@ -99,13 +111,15 @@ For complete technical details, see [docs/how-it-works.md](docs/how-it-works.md)
 - **Genetic Algorithm (GA)**: An optimization method inspired by natural selection that evaluates a population of candidate parameter sets, selects the top performers, and mutates them across generations.
 - **Ablation / Control**: An experimental technique where parts of a system (such as the background wiring) are removed or randomized to measure their true effect on performance.
 
-## References
+## References & Credits
 
 - White et al. (1986) — *The structure of the nervous system of the nematode C. elegans*
 - Varshney et al. (2011) — *Structural properties of the C. elegans neuronal network*
 - Kunert et al. (2014) — *Multistability and long-timescale transients encoded by network structure in a model of C. elegans connectome dynamics*
 - Gerstner & Kistler (2002) — *Spiking Neuron Models*
+- Typography: Bundles [JetBrains Mono](https://www.jetbrains.com/lp/mono/) font, licensed under the [SIL Open Font License 1.1](http://scripts.sil.org/OFL).
 
 ## License
 
 MIT © 2026 NeurWorm Project Contributors — see [LICENSE](LICENSE)
+

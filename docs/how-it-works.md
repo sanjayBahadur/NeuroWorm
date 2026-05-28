@@ -47,3 +47,27 @@ Rather than using machine-learning backpropagation, the project uses a **Genetic
 2. **Genome**: Each worm possesses a 36-gene chromosome. Each gene represents the physical synaptic conductance (weight in nanoSiemens) of a key biological pathway (such as `ASEL -> AIYL` for food-seeking or `AVM -> AVAL` for collision reflex).
 3. **Multi-Seed Evaluation**: Every generation, each candidate worm is evaluated across 5 distinct game seeds (`42, 107, 219, 333, 512`) to ensure robust foraging rather than memorization.
 4. **Selection & Elitism**: The top 3 champion worms are preserved intact (elitism). The remaining 7 slots are repopulated by mutated variants of the champions with Gaussian weight perturbations.
+
+---
+
+## What You See on Screen
+
+The interface provides real-time visibility into the physical environment and internal neural states of the swarm:
+
+### Arena Visuals
+- **Bacterial Egg & Scent Rings**: The nutrient spore glows brightly in the soil, encircled by 3 concentric diffusion rings that visualize the chemical scent gradient detected by `ASEL` and `ASER` chemosensory neurons.
+- **Hero Worm & Swarm Ghosts**: The currently focused worm (by default, the population leader) is rendered at 100% opacity with a radiant cyan halo, segmented organic tapering, and dynamic photoreceptor eyes. The other 9 swarm candidates are rendered as translucent ghosts (~35% opacity) with minimal numeric tags to preserve visual clarity.
+- **Whisker Proximity Rays**: Three sensory whiskers radiate from the hero worm's head (front, left, right). They project to the nearest wall or body obstacle, clamped strictly to the inner wall boundary. As danger approaches within 2 cells, rays dynamically transition from muted blue to amber and critical red with exact distance tags (`wall 2`, `self 1`).
+- **Hunger Gauge Arc**: A circular arc surrounding the hero worm's head tracks the 150-step metabolic starvation timer. It slowly depletes as steps elapse without food, turning vibrant red when under 20% stamina remaining.
+- **Death Bursts & Cause Labels**: Upon termination, a brief red dissipation burst marks the head location and a floating label identifies the exact failure cause:
+  - `hit the wall`: Navigated into the stone boundary.
+  - `bit itself`: Tangled with its own vermiform body segment.
+  - `starved`: Ran out of steps without consuming an egg.
+  - `x time` / `timeout`: Exceeded the generation step limit (400 steps).
+
+### Control & Telemetry Panel
+- **Live Thoughts Strip**: Displays real-time sensory inputs (smell balance, nose touch clear/danger), command neuron outputs (crawl forward vs evasive turn), and motor steering muscle activations (left vs right), synthesized into a plain-English status sentence.
+- **Synapse Learning Tab**: A secondary tab showing the top 4 evolved biological circuits with live synaptic conductance meters in nanoSiemens (nS).
+- **Swarm Leaderboard**: Ranks the top 5 worms (and focused worm) by eggs eaten and survival steps, annotated with color chips and real-time status/cause icons (`alive`, `x wall`, `x starved`, etc.).
+- **"Is It Learning?" Line Chart**: A dual-line history chart plotting the generation's highest egg score (yellow) and average swarm score (cyan) across generations with labeled axes.
+
